@@ -1,0 +1,4 @@
+En fait on va établir un système pour ça.
+Le potentiel est définit à la création du TennisPlayer, il n'aura pas vraiment de plafond sur ses notes (peut être un peu plafond de note moyenne pour éviter le joueur à 99 de notes partout). Ce potentiel permet de définir la vitesse de croissance du joueur pendant ses entrainements.
+La précocité es définit aussi à la création, plus un joueur est précoce plus il progressera tôt, mais sa progression s'arrêtera aussi plus tot. En vérité cette préocité sera un label pour l'User, une range de progression sera définit avec à peu près 5 saisons de grosses progressions (+ ou - 1 ou 2 saisons, ça sera aléatoire), on pourrait se retrouver avec un joueur précoce avec une range de 20 à 24 ans de grosse progression (puis une progression normale de 3-4 ans).
+La "progression normale" sera aussi aléatoire entre 2 et 4 ans, c'est pas encore définit
