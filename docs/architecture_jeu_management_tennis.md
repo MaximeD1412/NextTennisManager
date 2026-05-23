@@ -6,13 +6,13 @@ L’objectif est de créer un jeu de management de tennis avec une interface web
 
 Le jeu doit pouvoir gérer deux types de simulation :
 
-1. **Simulation interactive**
+1. **Simulation Live**
    - Match suivi en direct par le joueur.
    - Possibilité de changer la tactique en cours de match.
    - Interface mise à jour en temps réel.
    - Sauvegarde optionnelle d’un replay détaillé.
 
-2. **Simulation massive**
+2. **Simulation Batch**
    - Matchs joués sans affichage direct.
    - Objectif long terme : pouvoir simuler des millions, voire des milliards de matchs.
    - Sauvegarde minimale des données importantes.
@@ -20,8 +20,8 @@ Le jeu doit pouvoir gérer deux types de simulation :
 
 L’architecture doit donc être pensée autour de deux contraintes principales :
 
-- **Temps réel pour les matchs suivis par un utilisateur.**
-- **Stockage très optimisé pour les volumes massifs de matchs.**
+- **Temps réel pour les matchs Live.**
+- **Stockage très optimisé pour les volumes massifs de matchs Batch.**
 
 ---
 
@@ -188,44 +188,16 @@ Kafka pourrait devenir intéressant beaucoup plus tard si le jeu génère énorm
 
 ### Simulateur
 
-Deux options principales ont été discutées :
-
-#### Option 1 : simulateur en Java
+**Décision retenue : worker Java séparé.** Pas embarqué dans le processus Spring Boot — déployable indépendamment, versionnable via RabbitMQ (voir ADR-0006).
 
 Avantages :
 
-- Simplicité maximale.
 - Pas de communication inter-langage.
 - Même modèle métier que le backend.
-- Déploiement plus simple.
-- Moins de risques de divergence.
+- Indépendamment scalable et retirable par version.
+- Compatible Kubernetes (Deployment séparé par version).
 
-Inconvénients :
-
-- Moins agréable pour expérimenter des modèles statistiques complexes.
-- Moins naturel pour certains calculs scientifiques ou exploratoires.
-
-#### Option 2 : simulateur en Python
-
-Avantages :
-
-- Très bon pour itérer rapidement sur les formules.
-- Adapté aux simulations probabilistes, statistiques, Monte Carlo.
-- Accès facile à NumPy, Pandas, SciPy, etc.
-- Bon choix si la simulation devient très expérimentale.
-
-Inconvénients :
-
-- Nécessite communication Java ↔ Python.
-- Nécessite synchronisation des modèles.
-- Plus de complexité de déploiement.
-- Besoin de gérer Redis/RabbitMQ proprement.
-
-Décision recommandée :
-
-- Pour un MVP simple : simulateur intégré en Java possible.
-- Pour un moteur plus avancé : worker Python pertinent.
-- Vu l’ambition de simulation avancée, Python reste un choix cohérent, à condition de bien séparer les responsabilités.
+Note : un pipeline Python analytique offline (NumPy, SciPy, Monte Carlo) peut alimenter les stats depuis PostgreSQL. Il est distinct du simulateur temps réel et ne fait pas partie du flux live.
 
 ---
 
@@ -270,7 +242,7 @@ Spring Boot API
    | Redis : live state, cache, events courts, commandes
    | RabbitMQ : jobs asynchrones
    v
-Python Simulation Workers
+Java Simulation Workers (versionnés, voir ADR-0006)
    |
    | écrit les états live dans Redis
    | publie les events live
@@ -288,7 +260,7 @@ NextJS
         <-> PostgreSQL
         <-> Redis
         <-> RabbitMQ
-              <-> Python Worker
+              <-> Java Worker (v1, v2, …)
 ```
 
 ---
@@ -402,7 +374,7 @@ Exemple de message :
 
 ---
 
-### Python Worker
+### Java Simulation Worker
 
 Responsabilités :
 
@@ -437,16 +409,16 @@ Le joueur doit pouvoir :
 ```txt
 1. Spring crée un match en DB.
 2. Spring publie un job RabbitMQ : démarrer la simulation.
-3. Python worker récupère le job.
-4. Python initialise l’état du match.
-5. Python écrit l’état courant dans Redis.
-6. Python simule progressivement.
-7. Python publie les événements dans Redis Streams.
+3. Java worker récupère le job.
+4. Le worker initialise l’état du match.
+5. Le worker écrit l’état courant dans Redis.
+6. Le worker simule progressivement.
+7. Le worker publie les événements dans Redis Streams.
 8. Spring écoute ou lit ces événements.
 9. Spring pousse les updates aux clients via WebSocket.
 10. Spring sauvegarde périodiquement les snapshots importants en PostgreSQL.
-11. À la fin, Python calcule les stats finales.
-12. Python/Spring sauvegarde le résumé en PostgreSQL.
+11. À la fin, le worker calcule les stats finales.
+12. Le worker/Spring sauvegarde le résumé en PostgreSQL.
 13. Si activé, un fichier replay compact est produit.
 ```
 
@@ -582,7 +554,7 @@ NextJS
 Spring Boot
   -> valide l’action
   -> écrit une commande dans Redis
-Python Worker
+Java Simulation Worker
   -> lit la commande
   -> applique la tactique au prochain point ou au prochain coup pertinent
   -> publie un événement TACTIC_CHANGED
@@ -938,36 +910,9 @@ Pas nécessaire pour le MVP, mais très intéressant plus tard.
 
 ---
 
-## 16. ELO / rating
+## 16. ~~ELO / rating~~ *(supprimé)*
 
-Il est recommandé d’utiliser un système de rating.
-
-Possibilités :
-
-- ELO global
-- ELO par surface
-- rating forme récente
-- rating mental
-- rating service
-- rating retour
-
-Exemple :
-
-```txt
-Player A:
-- ELO global: 2180
-- ELO terre: 2250
-- ELO gazon: 2030
-- forme récente: +4.2 %
-```
-
-Cela peut influencer :
-
-- les probabilités de point
-- la confiance
-- les classements internes
-- les prédictions
-- les simulations massives
+> **Décision** : ELO supprimé du modèle de domaine. Les Attributs (échelle 1–99) encodent entièrement la force d’un TennisPlayer pour le simulateur. Le Prestige track le legacy de carrière. Aucun système ELO ou rating externe n’est nécessaire. Voir `CONTEXT.md` (termes à éviter) et ADR-0004.
 
 ---
 
@@ -1662,21 +1607,21 @@ storage_path = match_replays/2026/05/20/match_12345.tnr
 1. L’utilisateur lance ou rejoint un match.
 2. Spring crée le match en PostgreSQL.
 3. Spring publie un job RabbitMQ.
-4. Python worker démarre le match.
-5. Python initialise l’état Redis.
+4. Java worker démarre le match.
+5. Le worker initialise l’état Redis.
 6. NextJS récupère le snapshot via REST.
 7. NextJS ouvre la WebSocket.
-8. Python simule événement par événement.
-9. Python écrit l’état courant dans Redis.
-10. Python écrit les events live dans Redis Streams.
+8. Le worker simule événement par événement.
+9. Le worker écrit l’état courant dans Redis.
+10. Le worker écrit les events live dans Redis Streams.
 11. Spring relaie les events via WebSocket.
 12. L’utilisateur change la tactique.
 13. Spring écrit une commande Redis.
-14. Python lit la commande et l’applique.
-15. Python continue la simulation.
-16. À la fin du match, Python calcule les stats.
-17. Python produit le fichier replay .tnr si demandé.
-18. Spring ou Python sauvegarde les stats finales en PostgreSQL.
+14. Le worker lit la commande et l’applique.
+15. Le worker continue la simulation.
+16. À la fin du match, le worker calcule les stats.
+17. Le worker produit le fichier replay .tnr si demandé.
+18. Spring ou le worker sauvegarde les stats finales en PostgreSQL.
 19. Spring marque le match comme terminé.
 20. NextJS affiche le résumé final.
 ```
@@ -1688,8 +1633,8 @@ storage_path = match_replays/2026/05/20/match_12345.tnr
 ```txt
 1. Un job de simulation est créé.
 2. RabbitMQ envoie le job à un worker.
-3. Python simule le match sans publier tous les événements live.
-4. Python calcule uniquement les stats utiles.
+3. Le worker simule le match sans publier tous les événements live.
+4. Le worker calcule uniquement les stats utiles.
 5. Résultat et stats principales sauvegardés en PostgreSQL.
 6. Aucun fichier replay n’est produit.
 ```
@@ -1720,7 +1665,7 @@ Avoir un jeu fonctionnel sans sur-ingénierie.
 - pas encore de replay détaillé
 - pas encore de Redis Streams complexe si pas nécessaire
 
-Simulation possible directement en Java ou Python simple.
+Simulation en Java (worker séparé ou embarqué en Phase 1).
 
 ---
 
@@ -1754,7 +1699,7 @@ MATCH_END
 À ajouter :
 
 - RabbitMQ
-- Python worker
+- Java worker
 - jobs de simulation
 - séparation backend / simulation
 - meilleure scalabilité
@@ -1795,7 +1740,7 @@ MATCH_END
 
 ---
 
-### Phase 6 — Simulation massive
+### Phase 6 — Simulation Batch massive
 
 À ajouter :
 
@@ -2024,7 +1969,7 @@ Backend:
   - RabbitMQ producer
 
 Simulation:
-  - Python workers
+  - Java workers
   - simulation live
   - simulation batch
   - Redis live state
@@ -2067,7 +2012,7 @@ PostgreSQL = vérité durable
 Redis = vérité live temporaire
 RabbitMQ = lancement et distribution des jobs
 Spring Boot = API, WebSocket, orchestration
-Python = moteur de simulation avancé
+Java workers = moteur de simulation
 NextJS = interface joueur
 Protobuf + Zstd = replay compact
 S3/MinIO = stockage des replays
@@ -2111,7 +2056,7 @@ Spring Boot + Java
 PostgreSQL
 Redis
 RabbitMQ
-Python workers
+Java workers
 Protobuf + Zstd
 S3/MinIO plus tard
 Discord bot plus tard
