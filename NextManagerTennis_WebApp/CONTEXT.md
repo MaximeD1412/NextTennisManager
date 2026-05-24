@@ -3,7 +3,7 @@
 ## Glossary
 
 ### User
-The human logged into the game. A User can own one or more Clubs (one per Monde, potentially across different sports in the future). Do not use "Player", "Manager", or "Coach" to refer to the human — those are ambiguous.
+The human logged into the game. A User can own one or more Clubs (one per Monde, potentially across different sports in the future). Carries a `preferredLanguage` field (e.g. `fr`, `en`) that persists in the database and is read by the backend to localise asynchronous notifications (emails, offline push events) in the User's chosen language. Do not use "Player", "Manager", or "Coach" to refer to the human — those are ambiguous.
 
 ### Personne
 The base entity for any individual in the game. Every TennisPlayer and every Personnel member is a Personne. Carries: identity (name, nationality, age, preferred surface, **sexe**), TennisPlayerAttributes, and PersonnelAttributes. Sexe is fixed at creation and determines which circuit a TennisPlayer competes in (ATP for male, WTA for female). Do not use "genre" — use "sexe". Both attribute sets are generated at creation and coexist on the same entity throughout their lifecycle — the Personne exercises only one role at a time, determined by their active Contrat type. The TennisPlayer Potentiel and the Personnel Potentiel are independent values, also generated at creation. Do not use "Personne" as a synonym for TennisPlayer or Personnel — it is the underlying entity they share.
@@ -47,7 +47,7 @@ The full population of TennisPlayers that exist within a Ligue. Two sex-separate
 - If a Contrat is not renewed at inter-season, the TennisPlayer becomes libre and stays in the Ligue they are currently in (i.e. the User's Ligue at the time of expiry) — regardless of whether the User is being promoted, demoted, or staying. A User who changes Ligue without renewing a Contrat loses that TennisPlayer to the Ligue they are leaving.
 
 ### Contrat (Contract)
-The link between a Club and a Personne. Has a `type` (`TENNIS_PLAYER` | `JUNIOR` | `SCOUT` | `PREPARATEUR_PHYSIQUE` | `PREPARATEUR_TECHNIQUE` | `PREPARATEUR_MENTAL` | `MEDECIN` | `KINE` | `COMMERCIAL` | `AGENT`) that determines the Personne's active role. A Personne holds at most one active Contrat at a time.
+The link between a Club and a Personne. Has a `type` (`TENNIS_PLAYER` | `JUNIOR` | `SCOUT` | `PREPARATEUR_PHYSIQUE` | `PREPARATEUR_TECHNIQUE` | `PREPARATEUR_MENTAL` | `PREPARATEUR_TACTIQUE` | `MEDECIN` | `KINE` | `COMMERCIAL` | `AGENT`) that determines the Personne's active role. A Personne holds at most one active Contrat at a time.
 
 **JUNIOR Contrats** are for TennisPlayers aged 16–17 signed to a Club's Centre de Formation. Duration: **1 Saison**, renewable each Saison. Expires automatically when the TennisPlayer turns 18 — at that point the User may sign a standard `TENNIS_PLAYER` Contrat (if a main roster slot is available) or the TennisPlayer becomes libre on the adult circuit. A junior cannot participate in adult Tournois while holding a `JUNIOR` Contrat. A `JUNIOR` Contrat **cannot be résilié mid-Saison** — the only exit is non-renewal at Pré-Saison. The User decides at the start of each Saison whether to renew; if not renewed, the junior enters the Marché Libre.
 
@@ -104,20 +104,22 @@ Two scopes exist:
 - **Tactique en match** — an in-match override, ephemeral by default. Saved only if the User explicitly chooses to persist it at the end of the Match.
 
 ### Attributs
-The grouped numerical stats of a TennisPlayer. Organized in three categories:
-- **Physique** — vitesse, endurance, explosivité, etc.
-- **Technique** — service, retour, coup droit, revers, volley, etc.
-- **Mental** — clutch, résistance à la pression, concentration, etc.
+The grouped numerical stats of a TennisPlayer. Organized in four categories:
 
-Each Attribut has a value on a fixed **1–99 scale**. The set of Attributs and their scale are fixed across all Mondes — they form the simulator contract and cannot be overridden by MondeSetting. Do not call these "stats" or "notes" — use "Attributs".
+- **Physique** (7) — Vitesse latérale, Vitesse avant-arrière, Agilité, Jeu de jambes, Endurance, Équilibre, Récupération inter-points. Degraded by the Fatigue dynamic state. **Endurance** acts as a resilience coefficient: it modulates how strongly high Fatigue reduces effective Attributs Physique during a Match.
+- **Technique** (26) — organized into seven sub-families: *Service* (Puissance, Précision, Fiabilité, Second service, Variété); *Retour* (Retour coup droit, Retour revers, Lecture de service); *Coup droit* (Puissance, Précision, Régularité, En course); *Revers* (Puissance, Précision, Régularité, En course); *Volée* (Coup droit, Revers, Réflexes au filet, Toucher au filet, Smash, Couverture du filet); *Défense* (Contre, Glissade, Passing, Lob, Remise difficile); *Effets* (Lift, Slice, Amortie coup droit, Amortie revers). Degraded by the Rythme dynamic state.
+- **Mental** (4) — Clutch, Concentration, Confiance, Combativité. Degraded by the Moral dynamic state. **Confiance** acts as a resilience coefficient: it modulates how strongly low Moral reduces effective Attributs Mental during a Match.
+- **Intelligence de jeu** (6) — Lecture du jeu, Placement, Choix des coups, Construction du point, Vision du court, Exploitation des faiblesses. Not affected by any dynamic state (Fatigue, Rythme, Moral) — these Attributs remain stable regardless of competitive rhythm, physical condition, or emotional state. Developed through dedicated Exercices.
+
+Each Attribut has a value on a fixed **1–99 scale**. The set of Attributs, their sub-families, and their scale are fixed across all Mondes — they form the simulator contract and cannot be overridden by MondeSetting. Do not call these "stats" or "notes" — use "Attributs".
 
 ### Rythme (Match Rhythm)
-A dynamic state of a TennisPlayer that represents competitive sharpness. Rises with Matches played (Tours). Decays naturally each Semaine without a Match — not through Repos or other Activités. Affects **Attributs Technique** (service, retour, coup droit, revers, volley): high Rythme improves technical precision and timing; low Rythme reflects the rustiness of a player returning after a long break from competition. Creates strategic tension with Fatigue: playing more keeps Rythme high but raises Fatigue; resting recovers Fatigue but lets Rythme decay. Do not confuse with Moral (→ Mental) or Fatigue (→ Physique) — each dynamic state targets a distinct Attribut category.
+A dynamic state of a TennisPlayer that represents competitive sharpness. Rises with Matches played (Tours). Decays naturally each Semaine without a Match — not through Repos or other Activités. Affects all **Attributs Technique** (the 26 Attributs across the Service, Retour, Coup droit, Revers, Volée, Défense, and Effets sub-families): high Rythme improves technical precision and timing; low Rythme reflects the rustiness of a player returning after a long break from competition. Creates strategic tension with Fatigue: playing more keeps Rythme high but raises Fatigue; resting recovers Fatigue but lets Rythme decay. Do not confuse with Moral (→ Mental) or Fatigue (→ Physique) — each dynamic state targets a distinct Attribut category.
 
 Stored and displayed in the WebApp as a percentage bar (0–100%). Transmitted to the simulator as a normalised coefficient (0.0–1.0). Decay rate and effect thresholds are tunable via ConfigurationGlobale/MondeSetting.
 
 ### Fatigue
-A dynamic state of a TennisPlayer. Rises with Matches played and Entraînement Activités, falls with Repos Créneaux. High Fatigue increases the risk of Blessure and reduces effective **Attributs Physique** (vitesse, endurance, explosivité) during a Match. Distinct from the intra-match fatigue computed by the simulator point-by-point (which is ephemeral and not persisted between Matches).
+A dynamic state of a TennisPlayer. Rises with Matches played and Entraînement Activités, falls with Repos Créneaux. High Fatigue increases the risk of Blessure and reduces effective **Attributs Physique** (Vitesse latérale, Vitesse avant-arrière, Agilité, Jeu de jambes, Endurance, Équilibre, Récupération inter-points) during a Match. Distinct from the intra-match fatigue computed by the simulator point-by-point (which is ephemeral and not persisted between Matches).
 
 Stored and displayed in the WebApp as a percentage bar (0–100%). Transmitted to the simulator as a normalised coefficient (0.0–1.0). Effect thresholds (e.g. Blessure trigger probability) are tunable via ConfigurationGlobale/MondeSetting.
 
@@ -326,14 +328,14 @@ The leaf-level unit of the Entraînement hierarchy. A User assigns exactly one E
 - **Note Brute** (yellow stars) — the fixed base rating of the Exercice, independent of the TennisPlayer.
 - **Note Réelle** (orange stars) — the effective rating for the specific TennisPlayer, after PlayerType modulation. Shown overlaid on the yellow stars. The PlayerType multiplier is not stated explicitly — the User infers it from the gap between the two layers.
 
-The underlying model uses numerical delta values; stars are the UX representation only. Gains from an Exercice are modulated by: **PlayerType** (primary), **Fatigue** (secondary, minor), **Potentiel**, and the TennisPlayer's current progression phase (see Précocité).
+The underlying model uses numerical delta values; stars are the UX representation only. The Note Brute of each targeted Attribut maps to a non-linear base delta per Créneau (data-driven via ConfigurationGlobale). Each Exercice declares a **PlayerType affinity** per PlayerType — three discrete levels: `HIGH`, `NEUTRAL`, `LOW` — stored in the catalogue alongside the targeted Attributs. The **Note Réelle** is the product of Note Brute delta × PlayerType multiplier × Préparateur multiplier (if a Préparateur is assigned); it is both the value displayed in the UI and the input to the per-Créneau gain chain. Gains are further modulated by Potentiel, the TennisPlayer's current progression phase, and — secondarily and minimally — Fatigue. See ADR-0016 for the full gain formula.
 
-Exercices are data-driven entities managed through ConfigurationGlobale and overridable per Monde in MondeSetting. The full catalogue (which Exercices exist, their Catégorie, their targeted Attributs and weights) can be created, modified, or removed without code changes.
+Exercices are data-driven entities managed through ConfigurationGlobale and overridable per Monde in MondeSetting. The full catalogue (which Exercices exist, their Catégorie, their targeted Attributs, their Note Brute per Attribut, and their PlayerType affinities) can be created, modified, or removed without code changes.
 
 ### Potentiel
 A label assigned at Personne creation that defines the rate of growth for a given attribute set. Two independent Potentiel values exist per Personne: one for TennisPlayerAttributes growth during Entraînement, one for PersonnelAttributes growth through experience. They are generated independently and may differ (a great TennisPlayer may be a mediocre Scout and vice versa).
 
-**TennisPlayer Potentiel** — defines how much a TennisPlayer gains per Exercice. Not a hard ceiling on individual Attributs, but a soft cap on the overall average prevents extreme outliers. Five values on a star scale (1 to 5); exact label names are data-driven. **Not visible by default** — revealed progressively through Scouting as a narrowing range (never resolved to a single value; maximum refinement is a 1-star range). Distinct from Précocité — Potentiel is *how much* a TennisPlayer can grow per session; Précocité is *when* that growth occurs.
+**TennisPlayer Potentiel** — defines how much a TennisPlayer gains per Exercice, in two complementary ways: (1) an always-active **base multiplier** applied to every Exercice gain throughout the career — a 5★ TennisPlayer consistently gains more per Créneau than a 3★ one regardless of phase; (2) the **peak multiplier** applied additionally during the Période de Grosse Progression — the amplitude of the peak is itself Potentiel-dependent, making a 5★ TennisPlayer especially dominant during their window. Potentiel also defines the **soft cap threshold**: the global Attribut average at which diminishing returns begin to apply. A higher Potentiel raises this threshold, allowing the TennisPlayer to reach a higher overall plateau before gains slow down. Beyond the threshold, gains continue but with progressive diminishing returns — there is no hard ceiling on individual Attributs. Five values on a star scale (1 to 5); exact label names and all numeric coefficients are data-driven via ConfigurationGlobale. **Not visible by default** — revealed progressively through Scouting as a narrowing range (never resolved to a single value; maximum refinement is a 1-star range). Distinct from Précocité — Potentiel is *how much* a TennisPlayer can grow per session; Précocité is *when* that growth occurs. See ADR-0016.
 
 **Personnel Potentiel** — defines how much a Personne's PersonnelAttributes develop through experience (missions completed as Personnel). Same three values. Not visible to the User until the Personne is active as Personnel.
 
@@ -341,10 +343,10 @@ A label assigned at Personne creation that defines the rate of growth for a give
 A label assigned at TennisPlayer creation that defines the timing of a TennisPlayer's development curve. Three values: `Précoce`, `Normal`, `Tardif`. **Not visible by default** — revealed via Tier 2 Scouting (per-player investigation) only. Binary reveal: either the label is known or it is not. Once the Scout accumulates enough investigation Semaines on this TennisPlayer (threshold tunable via ConfigurationGlobale/MondeSetting), the label is revealed in full. No partial or progressive reveal. Determines the age range of the Période de Grosse Progression. A Précoce TennisPlayer peaks early (e.g. 20–24) and has their Progression Normale mainly after the peak; a Tardif TennisPlayer peaks late (e.g. 24–30) and tends to have their Progression Normale before the peak. The exact boundaries within the label's range are randomised at creation and not revealed to the User even after Scouting — only the label is shown.
 
 ### Période de Grosse Progression
-The ~5-season window (±1–2 seasons, randomised at creation) during which a TennisPlayer progresses fastest. Within this window, Exercice gains are multiplied by the progression rate defined by the TennisPlayer's Potentiel. The age range of this window is determined by Précocité but its exact start and end are not revealed to the User.
+The ~5-season window (±1–2 seasons, randomised at creation) during which a TennisPlayer progresses fastest. Within this window, an additional **peak multiplier** is applied on top of the Potentiel base multiplier — the amplitude of this peak is itself Potentiel-dependent (a 5★ TennisPlayer gains proportionally more during their peak than a 3★ one). All multiplier values are data-driven and tunable; a flat peak for all Potentiel levels can be configured by setting them to the same value. The age range of this window is determined by Précocité but its exact start and end are not revealed to the User. Transitions into and out of the window are immediate (no ramp).
 
 ### Progression Normale
-The 2–4 season period of slower but positive Attribut growth that surrounds the Période de Grosse Progression. Duration is randomised at creation. Can be distributed before or after the peak window, or split across both sides. A Tardif TennisPlayer tends to have more Progression Normale before the peak; a Précoce TennisPlayer tends to have it after.
+The 2–4 season period of slower but positive Attribut growth that surrounds the Période de Grosse Progression. During Progression Normale, the Potentiel base multiplier applies without the additional peak multiplier — the TennisPlayer progresses at their baseline rate. Duration is randomised at creation. Can be distributed before or after the peak window, or split across both sides. A Tardif TennisPlayer tends to have more Progression Normale before the peak; a Précoce TennisPlayer tends to have it after.
 
 ### Personnel
 A Personne currently holding a non-`TENNIS_PLAYER` Contrat with a Club (e.g. `SCOUT`, and other types TBD). Does not participate in Matches or consume Créneaux. The User deploys Personnel for a chosen number of Semaines to perform their role. PersonnelAttributes develop through accumulated experience (missions completed). Do not use "Staff" or "Employé" — use Personnel.
@@ -361,7 +363,14 @@ Two categories:
 Do not call these "stats" — use PersonnelAttributes.
 
 ### Préparateur *(future)*
-A type of Personnel specialised in a specific Attribut domain (Physique, Technique, or Mental). Three subtypes with anchored Contrat types: `PREPARATEUR_PHYSIQUE`, `PREPARATEUR_TECHNIQUE`, `PREPARATEUR_MENTAL`. Each applies a **multiplicateur** to the Note Réelle of all Exercices in its domain — the boosted Note Réelle is what the User sees in the UI, so the Préparateur's impact is immediately visible without additional explanation. The multiplier stacks with the existing PlayerType modulation on the Note Réelle. Multiplier values are tunable via ConfigurationGlobale/MondeSetting.
+A type of Personnel specialised in a specific Attribut domain. Four subtypes:
+
+- `PREPARATEUR_PHYSIQUE` — boosts the Note Réelle of Exercices targeting Attributs Physique.
+- `PREPARATEUR_TECHNIQUE` — boosts the Note Réelle of Exercices targeting Attributs Technique. Each Préparateur Technique has one or more **sub-specialisations** within the seven Technique sub-families (e.g. a specialist in Service/Retour, or a specialist in Fond de court covering Coup droit and Revers). The multiplier applies only to Exercices within the Préparateur's sub-specialisation(s).
+- `PREPARATEUR_MENTAL` — boosts the Note Réelle of Exercices targeting Attributs Mental.
+- `PREPARATEUR_TACTIQUE` — boosts the Note Réelle of Exercices targeting Attributs Intelligence de jeu.
+
+Each Préparateur applies a **multiplicateur** to the Note Réelle of Exercices in their domain — the boosted Note Réelle is what the User sees in the UI, so the Préparateur's impact is immediately visible without additional explanation. The multiplier stacks with the existing PlayerType modulation on the Note Réelle. Multiplier values are tunable via ConfigurationGlobale/MondeSetting.
 
 ### Médecin *(future)*
 A type of Personnel specialised in treating Maladie. Accelerates a TennisPlayer's recovery from illness and reduces the probability of contagion spreading to other Club TennisPlayers. Does not act on Fatigue or Blessure. Contrat type: `MEDECIN`.
@@ -436,7 +445,7 @@ Accumulated investigation progress belongs to the Club, not the Scout. If a Scou
 The cost of Scouting is the Salaire of the Scout (Personnel hired per Saison) — there is no additional per-deployment cost.
 
 ### Période de Régression
-A phase generated at TennisPlayer creation that defines when Attribut decline begins. Once reached, the TennisPlayer's Attributs may decrease each Saison, with the probability and intensity of regression increasing the longer the TennisPlayer has been in this phase. The age at which regression starts and its initial rate are randomised at creation and **never revealed to the User** — not through Scouting or any other mechanism. The only signal available is observing Attribut values decline over Saisons.
+A phase generated at TennisPlayer creation that defines when Attribut decline begins. Regression is a **separate Saison-end stochastic process**, independent of per-Créneau training gains: at the end of each Saison in this phase, a probability check determines whether specific Attributs lose points — and if so, how much. Both probability and intensity increase the longer the TennisPlayer has been in the phase. Per-Créneau training gains and Saison-end regression losses are additive — the net Attribut change over a Saison is their sum, which may be positive (if training outweighs regression) or negative (if regression dominates). Regression probability and intensity are **category-weighted** (Physique regresses fastest; Technique at an intermediate rate; Mental slowly; Intelligence de jeu quasi-never) — all weights are data-driven and tunable via ConfigurationGlobale. The age at which regression starts and its initial rate are randomised at creation and **never revealed to the User** — not through Scouting or any other mechanism. The only signal available is observing Attribut values decline over Saisons. See ADR-0016.
 
 ### Retraite (Retirement)
 The end of a TennisPlayer's active career. Triggered by two independent mechanisms:
@@ -490,7 +499,7 @@ The Mode Solo sub-mode in which the User creates a single TennisPlayer and follo
 
 **Tournoi inscription:** identical to Multi and MyClub — 3-Semaine advance deadline, Priorité d'Inscription, Wildcards, and Qualifications all apply. The `USER_CONTROLLED` cadence removes time pressure, but the planning mechanics are preserved.
 
-**Available Personnel types:** `PREPARATEUR_PHYSIQUE`, `PREPARATEUR_TECHNIQUE`, `PREPARATEUR_MENTAL`, `MEDECIN`, `KINE`.
+**Available Personnel types:** `PREPARATEUR_PHYSIQUE`, `PREPARATEUR_TECHNIQUE`, `PREPARATEUR_MENTAL`, `PREPARATEUR_TACTIQUE`, `MEDECIN`, `KINE`.
 
 **Excluded Personnel types:** `SCOUT` (no recruiting), `COMMERCIAL` (no Sponsor pool management), `AGENT` (no Sponsor negotiation intermediary).
 
@@ -507,7 +516,7 @@ The Mode Solo sub-mode in which the User configures a Monde and observes it evol
 
 ### Mod
 A user-importable data file that overrides part or all of the initial content of a Mode Solo Monde at creation. Available for all Mode Solo sub-modes (MyClub, MyPlayer, Sandbox). A Mod is **partial** — each section is optional; absent sections fall back to ConfigurationGlobale defaults. Sections a Mod can define:
-- **TennisPlayers** — initial pool with custom identities and Attributs (e.g. real-world player analogues with fictional names).
+- **TennisPlayers** — initial pool with custom identities, Attributs, and optional Portrait component IDs (e.g. real-world player analogues with fictional names). Portrait components must reference valid IDs from the Catalogue de Sprites — no binary image assets are embedded in a Mod.
 - **Tournois** — custom tournament calendar, formats, Catégories.
 - **Clubs NPC** — custom NPC Club names and identities.
 - **MondeSetting parameters** — game-balance overrides (same scope as MondeSetting; the Mod file is the equivalent of the advanced creation UI for these parameters).
@@ -515,6 +524,15 @@ A user-importable data file that overrides part or all of the initial content of
 Ligues are not part of a Mod — a Solo Monde has exactly one Ligue, which is invisible to the User.
 
 A **template** can be exported by the system, providing a blank-filled schema of all available Mod sections to guide authoring. Community-created Mods (e.g. a real ATP tour pack) are authored and distributed by Users; the developer is not the publisher of that content. Do not use "pack", "preset", or "configuration" to refer to a Mod in this sense — Mod is the canonical term for importable custom data.
+
+### Portrait
+The visual representation of a TennisPlayer. A bust illustration (head, shoulders, and torso) in a consistent "semi-realistic illustrated sports portrait" style. Composed once at Personne creation by stacking pre-made sprite layers (body silhouette, face, hair, optional facial hair) and stored permanently in object storage. Served via CDN as a standard image asset — never recomposed or regenerated after initial creation. Two generation paths: (1) automatic random assignment for NPCs, using the Personne's sexe and nationality as seeds for component selection; (2) user-driven composition for MyPlayer via the Créateur de Personnage. Do not use "avatar", "photo", or "image de profil" — use "Portrait".
+
+### Catalogue de Sprites
+The fixed set of pre-generated layered assets used to compose Portraits. Produced once during production using a dedicated art pipeline (style reference in Midjourney, then batch generation via Stable Diffusion with a custom LoRA). Organised by component category: body silhouette (per sexe), face (per skin tone × face shape), hair (per style × colour), facial hair (male only). Stored as static assets in object storage alongside Portraits. Never generated at runtime — all portrait composition at runtime draws exclusively from this pre-built set. Do not call it "sprite sheet" (these are individual layered assets, not a packed sheet) or "asset library".
+
+### Créateur de Personnage
+The UI presented during the MyPlayer creation flow that allows the User to compose their TennisPlayer's Portrait by choosing from Catalogue de Sprites components (face shape, skin tone, hair style, hair colour, and — for male TennisPlayers — facial hair). Selections are stored as component IDs on the Personne; the final Portrait image is composed server-side and stored in object storage at the moment the User confirms. The same component-ID schema is available to Mod authors for custom TennisPlayer portraits. Do not call it "character customizer", "avatar editor", or "éditeur de personnage" — use "Créateur de Personnage".
 
 ## Avoided terms
 
@@ -536,3 +554,6 @@ A **template** can be exported by the system, providing a blank-filled schema of
 | Carrière | Mode Solo (MyPlayer pour le sous-mode) | "Carrière" is ambiguous |
 | Mode Hors-ligne | Mode Solo | Canonical product name |
 | mode de jeu | sous-mode | Reserved for MyClub / MyPlayer / Sandbox distinctions |
+| Avatar / Photo / Image de profil | Portrait | Canonical term for TennisPlayer visual representation |
+| Character customizer / Avatar editor | Créateur de Personnage | Canonical term for the MyPlayer portrait UI |
+| Sprite sheet / Asset library | Catalogue de Sprites | These are layered individual assets, not a packed sheet |
