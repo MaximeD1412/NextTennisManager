@@ -57,10 +57,14 @@ increment = ReachResult_weight × Intent_weight / Endurance_resistance_coefficie
 | ReachResult | Weight |
 |---|---|
 | `COMFORTABLE` | `base_effort` |
-| `STRETCHED` | `stretched_effort` (> base) |
-| `MISSED` | `min(AvailableTime / RequiredTime, 1.0) × stretched_effort` |
+| `LATE` | `late_effort` (`base_effort < late_effort < stretched_effort`) |
+| `STRETCHED` | `stretched_effort` |
+| `DESPERATE` | `desperate_effort` (`> stretched_effort`) |
+| `MISSED` | `min(AvailableTime / RequiredTime, 1.0) × desperate_effort` |
 
-MISSED uses a continuous weight proportional to the effort actually expended: a near-miss (`AvailableTime ≈ RequiredTime`) costs as much as STRETCHED; a clear miss (perfectly unreachable ball, `AvailableTime ≪ RequiredTime`) costs near zero. The ratio is already computed during ReachResult evaluation — no additional data is required.
+MISSED uses a continuous weight proportional to the effort actually expended: a near-miss (`AvailableTime ≈ RequiredTime`) costs as much as DESPERATE; a clear miss (perfectly unreachable ball, `AvailableTime ≪ RequiredTime`) costs near zero. The ratio is already computed during ReachResult evaluation — no additional data is required.
+
+The MISSED reference was updated from `stretched_effort` to `desperate_effort` when ReachResult was expanded from 3 to 5 values: a ball that nearly falls into MISSED territory involves the same all-out physical effort as DESPERATE — referencing `stretched_effort` would underestimate the toll.
 
 A fixed cost per Coup was rejected: it would make a 30-stroke rally identically taxing to an ace, removing any physical meaning from rally length.
 

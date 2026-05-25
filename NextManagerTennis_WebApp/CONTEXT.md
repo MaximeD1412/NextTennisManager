@@ -129,7 +129,7 @@ A dynamic weekly state of a TennisPlayer. Rises with wins and certain Activités
 Stored and displayed in the WebApp as a percentage bar (0–100%). Transmitted to the simulator as a normalised coefficient (0.0–1.0). Effect weights are tunable via ConfigurationGlobale/MondeSetting.
 
 ### Blessure (Injury)
-A temporary health state of a TennisPlayer triggered **probabilistically when Fatigue is elevated** — the higher the Fatigue at the time of a Match, the greater the chance of injury occurring during that Tour. Applies an in-match Attribut malus but does **not** prevent participation in a Tournoi. Distinct from Maladie: a Blessure is physical, has no contagion risk, and is the direct consequence of poor Fatigue management. A Kiné accelerates recovery (reduces the number of Créneaux before the malus clears). The design intent is deliberate: Maladie is bad luck (unavoidable), Blessure is bad management (avoidable). Fatigue threshold and probability curve are tunable via ConfigurationGlobale/MondeSetting.
+A temporary health state of a TennisPlayer triggered by two independent mechanisms: (1) **probabilistically when Fatigue is elevated** — the higher the Fatigue at the time of a Match, the greater the chance of injury occurring during that Tour; (2) **probabilistically when a glissement accidentel occurs** during a Match on a wet outdoor surface — independent of Fatigue, configurable per surface in ConfigurationGlobale. Applies an in-match Attribut malus but does **not** prevent participation in a Tournoi. Distinct from Maladie: a Blessure is physical, has no contagion risk, and is the direct consequence of poor Fatigue management. A Kiné accelerates recovery (reduces the number of Créneaux before the malus clears). The design intent is deliberate: Maladie is bad luck (unavoidable), Blessure is bad management (avoidable). Fatigue threshold and probability curve are tunable via ConfigurationGlobale/MondeSetting.
 
 ### Maladie (Illness)
 A temporary health state of a TennisPlayer triggered by **pure random chance** — independent of Fatigue, calendar density, or any other game state. Applies an in-match Attribut malus but does **not** prevent participation in a Tournoi. Carries a **contagion risk**: if left untreated, other TennisPlayers in the same Club may become sick. A Médecin accelerates recovery (a top-quality Médecin can resolve a minor illness in as few as 2 Créneaux) and reduces contagion probability. The randomness is intentional — a Médecin is insurance against an unavoidable event, not a preventive tool. Trigger probability and contagion rates are tunable via ConfigurationGlobale/MondeSetting.
@@ -285,6 +285,15 @@ The system warns the User at inscription time when their TennisPlayer is likely 
 
 The number of Tours in the qualif Semaine is set by `toursQualification`, a configurable property on the Tournoi (same data-driven model as `toursParSemaine`). Default values per Catégorie are defined in ConfigurationGlobale and overridable per Monde in MondeSetting.
 
+### Ville
+The geographic entity representing the physical location of a Tournoi. A Ville carries a climate profile: one set of typical weather tendencies per Période Climatique (vent intensity range, precipitation frequency and intensity), plus an optional Saison des Pluies overlay. Multiple Tournois can be held in the same Ville — the climate profile applies to all editions. Historical Météo records (Météo effective from previous Saison editions) are stored per Tournoi and linked to the Ville. Default climate profile values are seeded from real-world historical weather data and are tunable per Monde via MondeSetting. Do not use "city" or "location" — use "Ville".
+
+### Période Climatique
+The meteorological season label used in a Ville's climate profile. Four values: `ÉTÉ`, `AUTOMNE`, `HIVER`, `PRINTEMPS`. Each defines typical vent intensity ranges and precipitation frequency/intensity for a given Ville. Do not confuse with Saison (the competitive cycle) — a Période Climatique is a weather descriptor, not a game period.
+
+### Saison des Pluies
+An optional overlay on a Ville's climate profile that defines a window of significantly elevated precipitation probability and intensity, bounded by game-Semaine start and end within the Saison calendar. Stacks on top of the standard Période Climatique profile — precipitation during this window is the base profile value multiplied by a configurable intensity coefficient. Not all Villes have a Saison des Pluies. Cannot be modelled as a fifth Période Climatique — it can span multiple Périodes Climatiques (e.g. a tropical monsoon covering late PRINTEMPS through early ÉTÉ). Tunable per Monde via MondeSetting.
+
 ### Tournoi
 A competitive event within a Saison that TennisPlayers enter by User inscription. Configuration properties:
 - `format`: `ELIMINATION_DIRECTE` | `POULE_PUIS_ELIMINATION`
@@ -294,11 +303,34 @@ A competitive event within a Saison that TennisPlayers enter by User inscription
 - `slotsQualification`: slots filled through a Qualification mini-tournament for TennisPlayers who missed the direct cut, awarded to the best-ranked candidates in that tier.
 - `slotsWildcard`: slots filled through the Wildcard system.
 - `toursQualification`: number of Tours in the Qualification mini-tournament for this Tournoi (e.g. 3 for Grand Chelem, 2 for ATP 250). Configurable per Tournoi; defaults per Catégorie come from ConfigurationGlobale and are overridable in MondeSetting.
+- `ville`: the Ville where the Tournoi takes place. Links the Tournoi to its climate profile and historical Météo records. See Ville and Météo.
 - `surface`: the playing surface of the Tournoi (`CLAY` | `GRASS` | `HARD` | `INDOOR_HARD`). Affects ball bounce and movement physics in the simulator. Drives surface-specific Prestige accumulation and informs PlayerType/Tactique recommendations for the User.
+- `protection_du_terrain`: the Protection du terrain rating of the Tournoi. A static value defined in ConfigurationGlobale per Tournoi edition. See Protection du terrain.
 
 Inscription requires at least **3 game Semaines** before the first Semaine in which the TennisPlayer could play their first Match — i.e. 3 Semaines before the Qualification Semaine if Qualifications exist, or 3 Semaines before `toursParSemaine[0]` otherwise. Exception: at Saison start, a special inscription window opens with the publication of the calendar, with no advance deadline. Inscription is to the Tournoi as a whole — not per Semaine.
 
 Composed of one or more Phases.
+
+### Météo
+The weather conditions associated with a Créneau de Tournoi on an outdoor surface (`CLAY`, `GRASS`, `HARD`). All Matches within the same Tour share the same Météo. Not applicable to `INDOOR_HARD` — all Météo inputs to the Simulator are zero/false for indoor Tournois.
+
+Four progressive states, surfaced to the User in sequence:
+
+1. **Météo précédente** — the Météo effective of the previous Saison's edition of this Tournoi. Available immediately from calendar publication. Falls back to the Ville's Période Climatique default in Saison 1 of a Monde (no prior edition exists).
+2. **Prévision initiale** — generated 8 Semaines before the first Match. Represented as qualitative labels: `ENSOLEILLÉ | NUAGEUX | PLUIE_LÉGÈRE | PLUIE_FORTE` for precipitation and `CALME | VENTEUX | TRÈS_VENTEUX` for vent (with a numerical range available on hover in the UI). Low accuracy — may change significantly before the match.
+3. **Prévision affinée** — generated 1 Semaine before the first Match. Same label format, higher accuracy. May differ substantially from the Prévision initiale.
+4. **Météo effective** — generated at the start of the Créneau on match day. Precise values transmitted to the Simulator: `VENT_MOYEN` (direction + intensité), `surface_wetness_initial` (float, 0.0–1.0), and `precipitation_active` (bool). See Contrat du Simulateur in the Simulator context.
+
+In Solo Mondes, Météo generation parameters are tunable via MondeSetting. The Sandbox sub-mode allows direct override of Météo effective for any Créneau.
+
+### Protection du terrain
+A static property of a Tournoi representing the quality of court protection against precipitation — bâche coverage, drainage infrastructure, and surface treatment. Stored as a float (0.0–1.0) in ConfigurationGlobale per Tournoi edition; cannot be upgraded during play (evolution deferred to future versions). Displayed to the User as a qualitative label derived from the float value (thresholds configurable via ConfigurationGlobale) — shown only in the detailed Tournoi information view, not in list or summary contexts.
+
+Acts on two physical parameters transmitted to the Simulator in the Contrat du Simulateur:
+1. **Plafonnement de `surface_wetness_initial`** — caps the starting court wetness at match time, regardless of how much it rained before. A high value means the court starts drier even after heavy overnight rain.
+2. **`surface_drying_rate`** — a higher value multiplies the base drying rate (how fast the court surface dries between Points when `precipitation_active = false`). The effective rate is computed by the WebApp (ConfigurationGlobale base rate × protection coefficient) and transmitted to the Simulator.
+
+Does not apply to `INDOOR_HARD` surfaces — weather inputs are zero/false for indoor Tournois regardless of protection value. Do not confuse with Réputation du Club (a MyClub-exclusive value) or Qualité du Centre de Formation. Do not use "bâchage" or "drainage" alone — use "Protection du terrain".
 
 ### Phase
 A stage within a Tournoi that groups Tours under shared rules. Two types:
@@ -557,3 +589,5 @@ The UI presented during the MyPlayer creation flow that allows the User to compo
 | Avatar / Photo / Image de profil | Portrait | Canonical term for TennisPlayer visual representation |
 | Character customizer / Avatar editor | Créateur de Personnage | Canonical term for the MyPlayer portrait UI |
 | Sprite sheet / Asset library | Catalogue de Sprites | These are layered individual assets, not a packed sheet |
+| Saison (meteorological) | Période Climatique | "Saison" is the competitive cycle — use "Période Climatique" for été/automne/hiver/printemps |
+| City / Location | Ville | Canonical term for the geographic location of a Tournoi |

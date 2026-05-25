@@ -10,19 +10,21 @@ Un point dans l'espace 3D du terrain, défini par trois coordonnées : **x** (la
 ### Coup
 Une frappe de balle effectuée par un joueur. Caractérisé par : une zone cible (CourtPosition), une vitesse initiale, un type de spin, et un niveau de risque issu de la Tactique. Le Coup génère une Trajectoire et déclenche un calcul de HitQuality. Ne pas utiliser "tir" — utiliser "Coup".
 
+Cas spécial — **BOISÉ** : un Coup sur le cadre de la raquette, extrêmement rare. Le joueur a atteint la balle (ReachResult valide, généralement COMFORTABLE ou LATE) mais le contact est raté. Représenté par `frameHit: true` sur l'événement `SHOT` du stream. HitQuality forcé à quasi zéro ; variance de Trajectoire maximale et aléatoire — la balle peut atterrir n'importe où. Le Point continue normalement après l'impact. Pas un ReachResult distinct ni une IssueDuPoint distincte.
+
 ### Trajectoire
 Le chemin 3D paramétrique d'un Coup depuis la frappe jusqu'au Rebond ou la sortie du terrain. Décrite par une CourtPosition de départ, une CourtPosition d'arrivée **effective**, une durée, une hauteur de pic, un vecteur de spin, et une vitesse. La CourtPosition d'arrivée effective est calculée à partir de la zone cible (issue de la Tactique) avec une variance modulée par le HitQuality : un HitQuality élevé produit une arrivée précise ; un HitQuality faible (ReachResult `STRETCHED` ou `DESPERATE`) produit une dispersion plus large, pouvant envoyer la balle hors des limites du terrain ou dans le filet. Si la CourtPosition d'arrivée effective est hors limites, l'IssueDuPoint est `FAUTE_NON_FORCÉE` ou `FAUTE_FORCÉE` selon le HitQuality.
 
 Sur les surfaces extérieures (`CLAY`, `GRASS`, `HARD`), le Vent courbe la balle en vol — la déviation latérale croît avec la hauteur (`z`) et la durée de vol. Le simulateur émet la Trajectoire en segments successifs via `BALL_FLIGHT_SEGMENT`, calculés progressivement (pas de pré-calcul de la trajectoire complète à l'impact). Sur `INDOOR_HARD` (sans Vent), un seul `BALL_FLIGHT_SEGMENT` suffit par Coup. Sert de base au calcul de AvailableTime pour l'adversaire.
 
 ### Rebond
-L'impact de la balle sur la surface du terrain. Modifie la vitesse et la direction de la balle selon la surface (`CLAY` | `GRASS` | `HARD` | `INDOOR_HARD`). La surface influence la hauteur du rebond (clay = rebond haut et lent, grass = rebond bas et rapide) et donc le AvailableTime du joueur suivant.
+L'impact de la balle sur la surface du terrain. Modifie la vitesse et la direction de la balle selon la surface (`CLAY` | `GRASS` | `HARD` | `INDOOR_HARD`). La surface influence la hauteur du rebond (clay = rebond haut et lent, grass = rebond bas et rapide) et donc le AvailableTime du joueur suivant. L'Humidité de Surface modifie ces paramètres sur les surfaces extérieures — voir Humidité de Surface.
 
 ### AvailableTime
 Le temps dont dispose un joueur entre sa position courante et le moment où il doit frapper. Recalculé à chaque `BALL_FLIGHT_SEGMENT` reçu : chaque segment précise la zone d'arrivée probable, le joueur ajuste son déplacement en conséquence. Sur `INDOOR_HARD` (sans Vent), un seul segment suffit — la zone d'arrivée est connue dès l'impact adverse. Sur les surfaces extérieures, la zone d'arrivée se précise progressivement ; un Vent plus fort que prévu sur un lob peut dégrader le ReachResult attendu jusqu'au dernier segment. Réduit par le ReactionDelay du joueur (influencé par l'Attribut anticipation).
 
 ### RequiredTime
-Le temps minimal nécessaire au joueur pour couvrir la distance entre sa CourtPosition courante et la zone d'arrivée de la balle, et se stabiliser avant la frappe. Dépend de : la distance à parcourir, les Attributs physiques du joueur (vitesse, explosivité), et le coefficient de Fatigue (0.0–1.0). Ne pas confondre avec AvailableTime — ces deux valeurs sont calculées indépendamment puis comparées.
+Le temps minimal nécessaire au joueur pour couvrir la distance entre sa CourtPosition courante et la zone d'arrivée de la balle, et se stabiliser avant la frappe. Dépend de : la distance à parcourir, les Attributs physiques du joueur (vitesse, explosivité), le coefficient de Fatigue (0.0–1.0), et l'Humidité de Surface (courbes par surface — réduction sur CLAY humide, augmentation sur GRASS et HARD humides). Ne pas confondre avec AvailableTime — ces deux valeurs sont calculées indépendamment puis comparées.
 
 ### ReachResult
 Le résultat de la comparaison `AvailableTime − RequiredTime`. Cinq valeurs :
@@ -50,7 +52,7 @@ L'événement terminal d'un Point. Cinq valeurs :
 Ne pas utiliser "erreur" seul — préciser FAUTE_NON_FORCÉE ou FAUTE_FORCÉE.
 
 ### Contrat du Simulateur
-L'interface fixe entre le contexte WebApp et le Simulator, définie dans ADR-0004. Le simulateur reçoit : les Attributs de chaque TennisPlayer (1–99), leurs états dynamiques (Fatigue, Rythme, Moral en 0.0–1.0), leur Tactique active, la surface du Match, le format (BEST_OF_3 | BEST_OF_5), et le VENT_MOYEN du Créneau `(direction: float, intensité: float)` — nul pour `INDOOR_HARD`. Il retourne : le vainqueur, le score complet, les stats du Match, et — si activé — les événements de replay. Les paramètres physiques internes (vitesse maximale par unité d'Attribut, courbes d'ErrorProbability, etc.) sont tunables via ConfigurationGlobale/MondeSetting et ne font **pas** partie du contrat fixe.
+L'interface fixe entre le contexte WebApp et le Simulator, définie dans ADR-0004. Le simulateur reçoit : les Attributs de chaque TennisPlayer (1–99), leurs états dynamiques (Fatigue, Rythme, Moral en 0.0–1.0), leur Tactique active, la surface du Match, le format (BEST_OF_3 | BEST_OF_5), le VENT_MOYEN du Créneau `(direction: float, intensité: float)`, `surface_wetness_initial: float` (0.0–1.0), `precipitation_active: bool`, et `surface_drying_rate: float` (taux de séchage par Point, calculé par le WebApp depuis la base ConfigurationGlobale modulée par la Protection du terrain du Tournoi) — les quatre derniers nuls/false/0.0 pour `INDOOR_HARD`. Il retourne : le vainqueur, le score complet, les stats du Match, et — si activé — les événements de replay. Les paramètres physiques internes (vitesse maximale par unité d'Attribut, courbes d'ErrorProbability, etc.) sont tunables via ConfigurationGlobale/MondeSetting et ne font **pas** partie du contrat fixe.
 
 ### Intention de Coup (Shot Intent)
 L'intention offensivo-défensive d'un Coup, déterminée avant chaque frappe. Trois valeurs :
@@ -84,7 +86,7 @@ Ce coefficient est recalculé à chaque Coup — il évolue tout au long du Matc
 ### Vent
 Une force horizontale (vecteur direction + intensité) affectant la Trajectoire des balles en vol sur les surfaces extérieures. Applicable uniquement aux surfaces `CLAY`, `GRASS`, et `HARD` — nul sur `INDOOR_HARD`.
 
-Chaque Créneau de Tournoi dispose d'un **VENT_MOYEN** : une intensité et direction de référence dérivées des données du Tournoi (certains tournois sont structurellement plus venteux que d'autres) et de la Météo générée en amont pour ce Créneau. Le VENT_MOYEN est transmis au simulateur dans le snapshot du Match. Voir Météo (à définir).
+Chaque Créneau de Tournoi dispose d'un **VENT_MOYEN** : une intensité et direction de référence dérivées de la Météo effective générée pour ce Créneau. Le VENT_MOYEN est transmis au simulateur dans le snapshot du Match. Voir Météo (WebApp CONTEXT.md).
 
 État persistant à travers le Match : le vecteur de Vent évolue **graduellement** autour du VENT_MOYEN entre les Points (petits incréments aléatoires en direction et/ou intensité, bornés par des seuils configurables) — il ne change pas aléatoirement d'un Point à l'autre. Pendant un Point donné, le vecteur de Vent est constant.
 
@@ -92,8 +94,23 @@ Effet sur la Trajectoire : courbe la balle latéralement en vol, l'amplitude de 
 
 Transmis au simulateur dans le snapshot du Match (Contrat du Simulateur) comme un vecteur `(direction: float, intensité: float)`. Intensité maximale, plage d'évolution par Point, et probabilité de changement de direction sont tunables via ConfigurationGlobale/MondeSetting.
 
+### Humidité de Surface
+Un état dynamique du terrain, parallèle au Vent, initialisé au démarrage du Match par `surface_wetness_initial` (reçu du Contrat du Simulateur, 0.0–1.0). Évolue entre les Points selon `precipitation_active` : décroît progressivement si le terrain sèche (`precipitation_active = false`), stable si la pluie continue. Le taux de séchage entre les Points est transmis dans le Contrat du Simulateur comme `surface_drying_rate: float` — calculé par le WebApp depuis la valeur de base ConfigurationGlobale modulée par la `Protection du terrain` du Tournoi.
+
+Produit deux effets distincts sur les surfaces extérieures (`CLAY`, `GRASS`, `HARD`), chacun avec des courbes configurables par surface dans ConfigurationGlobale :
+
+1. **Rebond** — modifie la hauteur du rebond et la vitesse horizontale post-rebond. Module également l'efficacité des Effets appliqués au Rebond (`Lift`, `Slice`, `Amortie coup droit`, `Amortie revers`) via des coefficients d'interaction configurables par surface.
+
+2. **RequiredTime** — modifie la mobilité des joueurs selon la surface : sur `CLAY` humide, légère réduction du RequiredTime (glissade amplifiée, s'empile additivement avec l'Attribut `Glissade`) ; sur `GRASS` et `HARD` humides, augmentation du RequiredTime (appuis instables, difficulté à se placer).
+
+Nul pour `INDOOR_HARD` : `surface_wetness_initial = 0.0`, `precipitation_active = false`, `surface_drying_rate = 0.0`. Jamais persisté — discardé à la fin du Match, comme la Fatigue Intra-Match.
+
 ### Replacement
-Le mouvement d'un joueur vers sa CourtPosition de base après avoir frappé un Coup. La vitesse de replacement est calculée depuis les Attributs Physique (Vitesse latérale, Vitesse avant-arrière, Agilité). La CourtPosition de base visée est déterminée par l'Attribut Intelligence de jeu Placement — elle n'est pas un point fixe (centre du fond de court), mais une CourtPosition optimale calculée selon la situation en cours. Le replacement commence dès que le joueur frappe et se poursuit jusqu'au moment où il doit se déplacer vers la balle suivante. La CourtPosition effective au moment du prochain calcul RequiredTime est la position atteinte pendant le temps de replacement disponible.
+Le mouvement d'un joueur vers sa CourtPosition de base après avoir frappé un Coup. La vitesse de replacement est calculée depuis les Attributs Physique (Vitesse latérale, Vitesse avant-arrière, Agilité), modulée par l'Humidité de Surface (mêmes courbes par surface que RequiredTime). La CourtPosition de base visée est déterminée par l'Attribut Intelligence de jeu Placement — elle n'est pas un point fixe (centre du fond de court), mais une CourtPosition optimale calculée selon la situation en cours. Le replacement commence dès que le joueur frappe et se poursuit jusqu'au moment où il doit se déplacer vers la balle suivante. La CourtPosition effective au moment du prochain calcul RequiredTime est la position atteinte pendant le temps de replacement disponible.
+
+**Glissement accidentel** — sur les trois surfaces extérieures humides (`CLAY`, `GRASS`, `HARD`), un changement de direction pendant le Replacement peut provoquer un glissement involontaire. Probabilité distincte par surface (CLAY très faible, GRASS et HARD plus élevées), configurable dans ConfigurationGlobale. Réduite par l'Attribut `Équilibre` sur toutes les surfaces ; réduite additionnellement par l'Attribut `Glissade` sur `CLAY` spécifiquement (maîtrise du sliding = meilleurs appuis sur CLAY humide).
+
+Lorsqu'un glissement se produit, l'événement `PLAYER_MOVE` porte `slipped: true`. Le joueur se retrouve dans une CourtPosition dégradée : le calcul du RequiredTime pour le **Coup suivant dans l'Échange en cours** part d'une position très défavorable, résultant typiquement en un ReachResult `STRETCHED` ou `DESPERATE`. Le glissement est un déclencheur de Blessure additionnel, indépendant de la Fatigue — probabilité configurable par surface dans ConfigurationGlobale, distincte de la probabilité Fatigue.
 
 ## Mapping Attributs → Rôle physique
 
@@ -106,7 +123,7 @@ Tableau de référence pour l'implémentation. Chaque Attribut est mappé à son
 | Agilité | Physique | Accélération et changement de direction — RequiredTime |
 | Jeu de jambes | Physique | Micro-ajustements pré-frappe — gate de stabilité avant la frappe, modifie HitQuality |
 | Endurance | Physique | Résistance à l'accumulation de fatigue intra-match — coefficient de résistance |
-| Équilibre | Physique | HitQuality quand le joueur frappe en déséquilibre (position dégradée) |
+| Équilibre | Physique | (1) Réduit la probabilité de glissement accidentel lors du Replacement sur surface humide ; (2) HitQuality quand le joueur frappe en déséquilibre (position dégradée) |
 | Récupération inter-points | Physique | Taux de dissipation de la fatigue intra-match entre les points |
 | Puissance service | Technique | Vitesse initiale de balle dans la Trajectoire du service |
 | Précision service | Technique | Dispersion autour du CourtPosition cible dans la zone de service |
@@ -131,7 +148,7 @@ Tableau de référence pour l'implémentation. Chaque Attribut est mappé à son
 | Smash | Technique | HitQuality pour le smash sur lob adverse |
 | Couverture du filet | Technique | Qualité du CourtPosition de départ au filet pour couvrir les angles adverses |
 | Contre | Technique | HitQuality pour un Coup d'Intention AGGRESSIVE depuis ReachResult = STRETCHED |
-| Glissade | Technique | Réduit le RequiredTime sur surface CLAY (glissade = extension de reach sans perte d'Équilibre) |
+| Glissade | Technique | Réduit le RequiredTime sur surface CLAY (glissade = extension de reach sans perte d'Équilibre) ; réduit additionnellement la probabilité de glissement accidentel sur CLAY humide |
 | Passing | Technique | HitQuality pour le passing shot quand l'adversaire est en CourtPosition filet |
 | Lob | Technique | HitQuality pour le lob (Trajectoire à arc z élevé) quand l'adversaire est en CourtPosition filet |
 | Remise difficile | Technique | Probabilité de remettre en jeu une balle avec ReachResult near-MISSED (Intention DEFENSIVE) |
