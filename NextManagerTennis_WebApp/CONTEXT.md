@@ -107,7 +107,7 @@ Two scopes exist:
 The grouped numerical stats of a TennisPlayer. Organized in four categories:
 
 - **Physique** (7) — Vitesse latérale, Vitesse avant-arrière, Agilité, Jeu de jambes, Endurance, Équilibre, Récupération inter-points. Degraded by the Fatigue dynamic state. **Endurance** acts as a resilience coefficient: it modulates how strongly high Fatigue reduces effective Attributs Physique during a Match.
-- **Technique** (26) — organized into seven sub-families: *Service* (Puissance, Précision, Fiabilité, Second service, Variété); *Retour* (Retour coup droit, Retour revers, Lecture de service); *Coup droit* (Puissance, Précision, Régularité, En course); *Revers* (Puissance, Précision, Régularité, En course); *Volée* (Coup droit, Revers, Réflexes au filet, Toucher au filet, Smash, Couverture du filet); *Défense* (Contre, Glissade, Passing, Lob, Remise difficile); *Effets* (Lift, Slice, Amortie coup droit, Amortie revers). Degraded by the Rythme dynamic state.
+- **Technique** (31) — organized into seven sub-families: *Service* (Puissance, Précision, Fiabilité, Second service, Variété); *Retour* (Retour coup droit, Retour revers, Lecture de service); *Coup droit* (Puissance, Précision, Régularité, En course); *Revers* (Puissance, Précision, Régularité, En course); *Volée* (Coup droit, Revers, Réflexes au filet, Toucher au filet, Smash, Couverture du filet); *Défense* (Contre, Glissade, Passing, Lob, Remise difficile); *Effets* (Lift, Slice, Amortie coup droit, Amortie revers). Degraded by the Rythme dynamic state.
 - **Mental** (4) — Clutch, Concentration, Confiance, Combativité. Degraded by the Moral dynamic state. **Confiance** acts as a resilience coefficient: it modulates how strongly low Moral reduces effective Attributs Mental during a Match.
 - **Intelligence de jeu** (6) — Lecture du jeu, Placement, Choix des coups, Construction du point, Vision du court, Exploitation des faiblesses. Not affected by any dynamic state (Fatigue, Rythme, Moral) — these Attributs remain stable regardless of competitive rhythm, physical condition, or emotional state. Developed through dedicated Exercices.
 
@@ -344,7 +344,7 @@ The atomic progression unit within a Phase. A Tour is a set of Matches played at
 A single encounter between two TennisPlayers within a Tour. Simulated in either Live or Batch mode. The Match is the unit of work dispatched to the simulation engine.
 
 ### Live (Simulation Live)
-A Match simulation followed in real time by a User. The User can change Tactics mid-match. Events are streamed via WebSocket. The source of truth for live state is Redis.
+A Match simulation followed in real time by a User. The User can change Tactics mid-match. Events are streamed via WebSocket. The source of truth for live state is Redis. On reconnection, the full event history is replayed from Redis — the client reconstructs the current match state before resuming the real-time stream. The Match continues without interruption regardless of client connection state.
 
 ### Batch (Simulation Batch)
 A Match simulation that runs in the background without real-time display. Used for unattended matches and mass simulation (e.g. simulating an entire Tournament round). No WebSocket, minimal storage.
