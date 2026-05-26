@@ -1,0 +1,111 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version (ex: 1.2.0) — laisser vide pour calculer automatiquement depuis les Conventional Commits"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    name: Créer la branche release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - name: Calculer la version
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+            echo "Version fournie manuellement : ${{ inputs.version }}"
+            exit 0
+          fi
+
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "Dernier tag : $LAST_TAG"
+
+          COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"%s")
+
+          if echo "$COMMITS" | grep -qE "^(feat|fix|chore|refactor|perf|test|docs)(\([^)]+\))?!:" || echo "$COMMITS" | grep -q "BREAKING CHANGE"; then
+            BUMP="major"
+          elif echo "$COMMITS" | grep -qE "^feat(\([^)]+\))?:"; then
+            BUMP="minor"
+          else
+            BUMP="patch"
+          fi
+          echo "Bump détecté : $BUMP"
+
+          VERSION=${LAST_TAG#v}
+          MAJOR=$(echo $VERSION | cut -d. -f1)
+          MINOR=$(echo $VERSION | cut -d. -f2)
+          PATCH=$(echo $VERSION | cut -d. -f3)
+
+          case $BUMP in
+            major) NEXT="$((MAJOR+1)).0.0" ;;
+            minor) NEXT="${MAJOR}.$((MINOR+1)).0" ;;
+            patch) NEXT="${MAJOR}.${MINOR}.$((PATCH+1))" ;;
+          esac
+
+          echo "version=$NEXT" >> $GITHUB_OUTPUT
+          echo "Version calculée : $NEXT"
+
+      - name: Vérifier que la branche n'existe pas déjà
+        run: |
+          BRANCH="release/v${{ steps.version.outputs.version }}"
+          if git ls-remote --heads origin "$BRANCH" | grep -q "$BRANCH"; then
+            echo "La branche $BRANCH existe déjà."
+            exit 1
+          fi
+
+      - name: Générer le CHANGELOG
+        uses: orhun/git-cliff-action@v3
+        id: changelog
+        with:
+          config: cliff.toml
+          args: --unreleased --tag v${{ steps.version.outputs.version }}
+        env:
+          OUTPUT: CHANGELOG.md
+          GITHUB_REPO: ${{ github.repository }}
+
+      - name: Créer la branche release et committer le CHANGELOG
+        run: |
+          BRANCH="release/v${{ steps.version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add CHANGELOG.md
+          git commit -m "chore(release): prepare v${{ steps.version.outputs.version }}"
+          git push origin "$BRANCH"
+
+      - name: Créer la Pull Request vers main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="v${{ steps.version.outputs.version }}"
+          gh pr create \
+            --base main \
+            --head "release/$VERSION" \
+            --title "release: $VERSION" \
+            --body "## Release $VERSION
+
+          Cette PR a été générée automatiquement depuis \`develop\`.
+
+          ### Checklist avant merge
+          - [ ] CHANGELOG relu et validé
+          - [ ] CI verte
+          - [ ] Après merge : créer le tag \`$VERSION\` sur \`main\`
+          - [ ] Après merge : merger \`main\` dans \`develop\`
+
+          > Merge avec **merge commit** (pas de squash). Le tag \`$VERSION\` doit être créé sur le commit de merge."
