@@ -1,0 +1,331 @@
+syntax = "proto3";
+
+package simulator;
+
+option java_package = "com.nexttennis.simulator.proto";
+option java_outer_classname = "SimulatorProto";
+option java_multiple_files = true;
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum ShotType {
+  SHOT_TYPE_UNSPECIFIED = 0;
+  SHOT_TYPE_FOREHAND = 1;
+  SHOT_TYPE_BACKHAND = 2;
+  SHOT_TYPE_SERVE = 3;
+  SHOT_TYPE_VOLLEY_FOREHAND = 4;
+  SHOT_TYPE_VOLLEY_BACKHAND = 5;
+  SHOT_TYPE_SMASH = 6;
+  SHOT_TYPE_LOB = 7;
+  SHOT_TYPE_DROP_SHOT_FOREHAND = 8;
+  SHOT_TYPE_DROP_SHOT_BACKHAND = 9;
+}
+
+enum ShotEffect {
+  SHOT_EFFECT_UNSPECIFIED = 0;
+  SHOT_EFFECT_FLAT = 1;
+  SHOT_EFFECT_TOPSPIN = 2;
+  SHOT_EFFECT_SLICE = 3;
+  SHOT_EFFECT_LIFT = 4;
+}
+
+enum ShotIntent {
+  SHOT_INTENT_UNSPECIFIED = 0;
+  SHOT_INTENT_AGGRESSIVE = 1;
+  SHOT_INTENT_NEUTRAL = 2;
+  SHOT_INTENT_DEFENSIVE = 3;
+}
+
+enum CourtSide {
+  COURT_SIDE_UNSPECIFIED = 0;
+  COURT_SIDE_DEUCE = 1;
+  COURT_SIDE_AD = 2;
+}
+
+enum ReachResult {
+  REACH_RESULT_UNSPECIFIED = 0;
+  REACH_RESULT_COMFORTABLE = 1;
+  REACH_RESULT_LATE = 2;
+  REACH_RESULT_STRETCHED = 3;
+  REACH_RESULT_DESPERATE = 4;
+  REACH_RESULT_MISSED = 5;
+}
+
+enum IssueDuPoint {
+  ISSUE_DU_POINT_UNSPECIFIED = 0;
+  ISSUE_DU_POINT_ACE = 1;
+  ISSUE_DU_POINT_DOUBLE_FAUTE = 2;
+  ISSUE_DU_POINT_COUP_GAGNANT = 3;
+  ISSUE_DU_POINT_FAUTE_NON_FORCEE = 4;
+  ISSUE_DU_POINT_FAUTE_FORCEE = 5;
+}
+
+enum Surface {
+  SURFACE_UNSPECIFIED = 0;
+  SURFACE_CLAY = 1;
+  SURFACE_GRASS = 2;
+  SURFACE_HARD = 3;
+  SURFACE_INDOOR_HARD = 4;
+}
+
+enum MatchFormat {
+  MATCH_FORMAT_UNSPECIFIED = 0;
+  MATCH_FORMAT_BEST_OF_3 = 1;
+  MATCH_FORMAT_BEST_OF_5 = 2;
+}
+
+enum TiebreakType {
+  TIEBREAK_TYPE_UNSPECIFIED = 0;
+  TIEBREAK_TYPE_STANDARD = 1;
+  TIEBREAK_TYPE_SUPER_TIEBREAK = 2;
+}
+
+enum PlayerTactic {
+  PLAYER_TACTIC_UNSPECIFIED = 0;
+  PLAYER_TACTIC_AGGRESSIVE_BASELINE = 1;
+  PLAYER_TACTIC_COUNTER_PUNCHER = 2;
+  PLAYER_TACTIC_NET_RUSHER = 3;
+  PLAYER_TACTIC_ALL_COURT = 4;
+  PLAYER_TACTIC_DEFENSIVE = 5;
+  PLAYER_TACTIC_SERVE_AND_VOLLEY = 6;
+}
+
+// ─── Shared types ─────────────────────────────────────────────────────────────
+
+message CourtPosition {
+  float x = 1;
+  float y = 2;
+  float z = 3;
+}
+
+message WindVector {
+  float direction = 1;
+  float intensity = 2;
+}
+
+message TennisPlayerSnapshot {
+  string player_id = 1;
+  string name = 2;
+  // Physical attributes (1–99)
+  int32 vitesse_laterale = 3;
+  int32 vitesse_avant_arriere = 4;
+  int32 agilite = 5;
+  int32 jeu_de_jambes = 6;
+  int32 endurance = 7;
+  int32 equilibre = 8;
+  int32 recuperation_inter_points = 9;
+  // Technical attributes (1–99)
+  int32 puissance_service = 10;
+  int32 precision_service = 11;
+  int32 fiabilite_service = 12;
+  int32 second_service = 13;
+  int32 variete_service = 14;
+  int32 retour_coup_droit = 15;
+  int32 retour_revers = 16;
+  int32 lecture_de_service = 17;
+  int32 puissance_coup_droit = 18;
+  int32 precision_coup_droit = 19;
+  int32 regularite_coup_droit = 20;
+  int32 coup_droit_en_course = 21;
+  int32 puissance_revers = 22;
+  int32 precision_revers = 23;
+  int32 regularite_revers = 24;
+  int32 revers_en_course = 25;
+  int32 volee_coup_droit = 26;
+  int32 volee_revers = 27;
+  int32 reflexes_au_filet = 28;
+  int32 toucher_au_filet = 29;
+  int32 smash = 30;
+  int32 couverture_du_filet = 31;
+  int32 contre = 32;
+  int32 glissade = 33;
+  int32 passing = 34;
+  int32 lob = 35;
+  int32 remise_difficile = 36;
+  int32 lift = 37;
+  int32 slice_attr = 38;
+  int32 amortie_coup_droit = 39;
+  int32 amortie_revers = 40;
+  // Mental attributes (1–99)
+  int32 clutch = 41;
+  int32 concentration = 42;
+  int32 confiance = 43;
+  int32 combativite = 44;
+  // Intelligence de jeu (1–99)
+  int32 lecture_du_jeu = 45;
+  int32 placement = 46;
+  int32 choix_des_coups = 47;
+  int32 construction_du_point = 48;
+  int32 vision_du_court = 49;
+  int32 exploitation_des_faiblesses = 50;
+  // Dynamic state
+  float fatigue_inter_match = 51;
+  float moral = 52;
+  float rythme = 53;
+  PlayerTactic active_tactic = 54;
+}
+
+message ScoreSnapshot {
+  int32 sets_player1 = 1;
+  int32 sets_player2 = 2;
+  repeated int32 games_per_set_player1 = 3;
+  repeated int32 games_per_set_player2 = 4;
+  int32 current_games_player1 = 5;
+  int32 current_games_player2 = 6;
+  int32 current_points_player1 = 7;
+  int32 current_points_player2 = 8;
+}
+
+message PlayerStats {
+  string player_id = 1;
+  int32 aces = 2;
+  int32 double_faults = 3;
+  int32 first_serve_in = 4;
+  int32 first_serve_total = 5;
+  int32 winners = 6;
+  int32 unforced_errors = 7;
+  int32 forced_errors = 8;
+  int32 total_shots = 9;
+  float avg_rally_length = 10;
+  float fatigue_delta = 11;
+}
+
+// ─── Structural events ────────────────────────────────────────────────────────
+
+message MatchStart {
+  string match_id = 1;
+  TennisPlayerSnapshot player1 = 2;
+  TennisPlayerSnapshot player2 = 3;
+  Surface surface = 4;
+  MatchFormat format = 5;
+  WindVector wind_mean = 6;
+  float surface_wetness_initial = 7;
+  bool precipitation_active = 8;
+  float surface_drying_rate = 9;
+}
+
+message SetStart {
+  int32 set_number = 1;
+  ScoreSnapshot score = 2;
+}
+
+message GameStart {
+  int32 set_number = 1;
+  int32 game_number = 2;
+  string server_id = 3;
+  ScoreSnapshot score = 4;
+}
+
+message PointStart {
+  int32 set_number = 1;
+  int32 game_number = 2;
+  int32 point_number = 3;
+  string server_id = 4;
+  CourtSide court_side = 5;
+  ScoreSnapshot score = 6;
+}
+
+message PointEnd {
+  IssueDuPoint issue_du_point = 1;
+  string winner_id = 2;
+  ScoreSnapshot score = 3;
+  int32 rally_length = 4;
+}
+
+message GameEnd {
+  string winner_id = 1;
+  bool is_break = 2;
+  ScoreSnapshot score = 3;
+  bool is_tiebreak = 4;
+}
+
+message SetEnd {
+  string winner_id = 1;
+  int32 games_player1 = 2;
+  int32 games_player2 = 3;
+  bool was_tiebreak = 4;
+  TiebreakType tiebreak_type = 5;
+}
+
+message MatchEnd {
+  string winner_id = 1;
+  ScoreSnapshot final_score = 2;
+  PlayerStats stats_player1 = 3;
+  PlayerStats stats_player2 = 4;
+}
+
+// ─── Action events ────────────────────────────────────────────────────────────
+
+message ServeStart {
+  int32 serve_number = 1;
+  CourtSide court_side = 2;
+  string server_id = 3;
+}
+
+message PlayerMove {
+  string player_id = 1;
+  CourtPosition from = 2;
+  CourtPosition to = 3;
+  float available_time = 4;
+  float required_time = 5;
+  bool slipped = 6;
+}
+
+message Shot {
+  string player_id = 1;
+  ShotType shot_type = 2;
+  ShotEffect shot_effect = 3;
+  ShotIntent effective_intent = 4;
+  ReachResult reach_result = 5;
+  float hit_quality = 6;
+  bool frame_hit = 7;
+  CourtPosition target_position = 8;
+}
+
+message Fault {
+  string server_id = 1;
+  int32 serve_number = 2;
+  CourtPosition landing_position = 3;
+}
+
+// ─── Visual events ────────────────────────────────────────────────────────────
+
+message BallFlightSegment {
+  CourtPosition from = 1;
+  CourtPosition to = 2;
+  float duration_ms = 3;
+  float speed_kmh = 4;
+  ShotEffect spin = 5;
+}
+
+// ─── User events ──────────────────────────────────────────────────────────────
+
+message TacticChange {
+  string player_id = 1;
+  PlayerTactic previous_tactic = 2;
+  PlayerTactic new_tactic = 3;
+}
+
+// ─── Envelope ─────────────────────────────────────────────────────────────────
+
+message SimulatorEvent {
+  string match_id = 1;
+  int64 timestamp_ms = 2;
+
+  oneof payload {
+    MatchStart match_start = 3;
+    SetStart set_start = 4;
+    GameStart game_start = 5;
+    PointStart point_start = 6;
+    PointEnd point_end = 7;
+    GameEnd game_end = 8;
+    SetEnd set_end = 9;
+    MatchEnd match_end = 10;
+    ServeStart serve_start = 11;
+    PlayerMove player_move = 12;
+    Shot shot = 13;
+    Fault fault = 14;
+    BallFlightSegment ball_flight_segment = 15;
+    TacticChange tactic_change = 16;
+  }
+}

@@ -1,0 +1,25 @@
+# Gradle build outputs
+build/
+build/generated/
+.gradle/
+
+# Generated protobuf stubs (TypeScript)
+NextManagerTennis_WebApp/frontend/src/generated/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Kotlin / JVM
+*.class
+*.war
+*.ear
+out/
+# Exclude compiled JARs but keep the Gradle wrapper JAR
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
