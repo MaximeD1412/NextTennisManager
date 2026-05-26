@@ -1,0 +1,35 @@
+name: CI — Simulator
+
+on:
+  push:
+    branches: [develop, main]
+    paths:
+      - "NextManagerTennis_Simulator/**"
+      - ".github/workflows/ci-simulator.yml"
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - "NextManagerTennis_Simulator/**"
+      - ".github/workflows/ci-simulator.yml"
+
+defaults:
+  run:
+    working-directory: NextManagerTennis_Simulator
+
+jobs:
+  build-and-test:
+    name: Build & Test (Spring Boot)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: "temurin"
+          cache: "maven"
+
+      - name: Build & test
+        run: mvn --batch-mode verify

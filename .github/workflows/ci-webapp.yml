@@ -1,0 +1,49 @@
+name: CI — WebApp
+
+on:
+  push:
+    branches: [develop, main]
+    paths:
+      - "NextManagerTennis_WebApp/**"
+      - ".github/workflows/ci-webapp.yml"
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - "NextManagerTennis_WebApp/**"
+      - ".github/workflows/ci-webapp.yml"
+
+defaults:
+  run:
+    working-directory: NextManagerTennis_WebApp
+
+jobs:
+  build-and-test:
+    name: Build & Test (Next.js)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: NextManagerTennis_WebApp/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npm run type-check
+
+      - name: Unit tests
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+        env:
+          SKIP_ENV_VALIDATION: "1"
