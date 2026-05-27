@@ -1,0 +1,14 @@
+{
+  "name": "next-tennis-manager-webapp",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "generate:proto": "grpc_tools_node_protoc --plugin=protoc-gen-ts_proto=./node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=./src/generated --proto_path=../../shared/proto ../../shared/proto/simulator.proto",
+    "prebuild": "npm run generate:proto",
+    "build": "echo \"build placeholder\""
+  },
+  "devDependencies": {
+    "grpc-tools": "^1.12.4",
+    "ts-proto": "^1.170.0"
+  }
+}
