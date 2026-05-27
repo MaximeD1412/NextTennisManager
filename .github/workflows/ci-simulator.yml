@@ -5,16 +5,14 @@ on:
     branches: [develop, main]
     paths:
       - "NextManagerTennis_Simulator/**"
+      - "shared/proto/**"
       - ".github/workflows/ci-simulator.yml"
   pull_request:
     branches: [develop, main]
     paths:
       - "NextManagerTennis_Simulator/**"
+      - "shared/proto/**"
       - ".github/workflows/ci-simulator.yml"
-
-defaults:
-  run:
-    working-directory: NextManagerTennis_Simulator
 
 jobs:
   build-and-test:
@@ -29,7 +27,7 @@ jobs:
         with:
           java-version: "21"
           distribution: "temurin"
-          cache: "maven"
+          cache: "gradle"
 
       - name: Build & test
-        run: mvn --batch-mode verify
+        run: ./gradlew :shared:proto:generateProto :simulator:build :simulator:test
