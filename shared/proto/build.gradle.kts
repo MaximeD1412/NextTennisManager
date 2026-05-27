@@ -8,7 +8,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.google.protobuf:protobuf-java:3.25.3")
+    api("com.google.protobuf:protobuf-java:3.25.3")
 }
 
 protobuf {
@@ -18,6 +18,6 @@ protobuf {
 }
 
 tasks.withType<JavaCompile> {
-    sourceCompatibility = "25"
-    targetCompatibility = "25"
+    sourceCompatibility = "21"
+    targetCompatibility = "21"
 }
