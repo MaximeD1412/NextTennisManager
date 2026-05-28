@@ -1,0 +1,5 @@
+[workspace]
+members = [
+    "physics-core",
+]
+resolver = "2"

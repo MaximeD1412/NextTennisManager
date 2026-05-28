@@ -366,6 +366,45 @@ message NetInteraction {
   float pass_probability = 6;
 }
 
+// ─── Physics contract (Java → Rust boundary) ─────────────────────────────────
+
+message SurfaceCoefficients {
+  float drag = 1;
+  float magnus = 2;
+  float restitution = 3;
+  float friction = 4;
+  // Wetness curve: multiplier applied to bounce height at full wetness (1.0)
+  float wetness_bounce_scale = 5;
+  // Wetness curve: multiplier applied to friction at full wetness (1.0)
+  float wetness_friction_scale = 6;
+}
+
+message PhysicsEnvironment {
+  Surface surface = 1;
+  float surface_wetness = 2;
+  WindVector wind = 3;
+  SurfaceCoefficients coefficients = 4;
+}
+
+message ShotSpec {
+  CourtPosition contact_position = 1;
+  Vector3 velocity = 2;
+  float spin_rpm = 3;
+  Vector3 spin_axis = 4;
+  string match_id = 5;
+  int32 point_index = 6;
+  int32 shot_index = 7;
+}
+
+message PhysicsSimulationResult {
+  CourtPosition landing_position = 1;
+  repeated BallFlightSegment ball_flight_segments = 2;
+  Bounce bounce = 3;
+  NetInteraction net_interaction = 4;
+  ServeLet serve_let = 5;
+  bool cleared_net = 6;
+}
+
 // ─── User events ──────────────────────────────────────────────────────────────
 
 message TacticChange {
