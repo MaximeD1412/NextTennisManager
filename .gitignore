@@ -6,6 +6,9 @@ build/generated/
 # Generated protobuf stubs (TypeScript)
 NextManagerTennis_WebApp/frontend/src/generated/
 
+# Generated protobuf stubs (Rust)
+physics-core/src/generated/
+
 # IDE
 .idea/
 *.iml
