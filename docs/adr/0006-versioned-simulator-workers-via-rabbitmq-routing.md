@@ -4,7 +4,7 @@
 Accepted
 
 ## Context
-The simulation engine (NextManagerTennis_Simulator) is a separate Java worker that receives jobs from Spring Boot via RabbitMQ. Different Mondes may run different simulator versions — for example, a test Monde on a new version while production Mondes remain on the stable version. A simulator version may also need to change mid-Saison in an emergency (broken simulation behaviour), though Pré-Saison is the preferred window for planned upgrades.
+The simulation engine (NextManagerTennis_Simulator) is a separate Java orchestration worker that receives jobs from Spring Boot via RabbitMQ. The ball-physics hot path may be delegated to the Rust `physics-core` defined in ADR-0024, but the routed simulator deployment remains the Java worker version. Different Mondes may run different simulator versions — for example, a test Monde on a new version while production Mondes remain on the stable version. A simulator version may also need to change mid-Saison in an emergency (broken simulation behaviour), though Pré-Saison is the preferred window for planned upgrades.
 
 Three routing alternatives were considered:
 
@@ -15,7 +15,7 @@ Three routing alternatives were considered:
 ## Decision
 Use **versioned RabbitMQ queues** (option 2).
 
-- Each simulator version is a separate Java worker deployment subscribing to a version-specific queue: `simulator.v1.jobs`, `simulator.v2.jobs`, etc.
+- Each simulator version is a separate Java worker deployment subscribing to a version-specific queue: `simulator.v1.jobs`, `simulator.v2.jobs`, etc. If this worker uses Rust physics, the Rust `physics-core` binary/library version is part of that simulator deployment.
 - `MondeSetting` carries a `simulatorVersion` field that Spring Boot reads at job dispatch time to determine the target queue.
 - Each `Match` record persists the `simulatorVersion` used at simulation time — not only in replay metadata, but on the `matches` table directly. This ensures matches without a replay (Batch/NONE mode) remain traceable.
 - Version changes are made by updating `MondeSetting.simulatorVersion`. The preferred window is Pré-Saison; mid-Saison changes are permitted for critical fixes but result in intra-Saison stats that are not comparable across the version boundary.
@@ -23,8 +23,11 @@ Use **versioned RabbitMQ queues** (option 2).
 
 The simulator contract defined in ADR-0004 (Attributs on a 1–99 scale, dynamic states as 0.0–1.0 coefficients, stable physical inputs such as morphology, and match environment coefficients) remains fixed across all versions. A new simulator version may interpret those inputs differently (algorithm changes, balance changes), but must consume the same interface. Changes to the interface itself require a simulator contract version bump, which is a separate concern from the worker routing version.
 
+The Java worker owns high-level determinism and seed derivation. Rust physics determinism is scoped to the exact physics-core version/build used by that worker. Changing the Rust physics algorithm, build profile, SIMD strategy or floating-point behavior is a simulator-version change, even if the external RabbitMQ payload shape does not change.
+
 ## Consequences
 - Each active simulator version requires a running worker process. The number of simultaneously active versions should be kept small (typically 1–2: current stable + candidate under test).
 - Stats from Matches simulated across different versions within the same Saison are not directly comparable. The persisted `simulatorVersion` on each Match allows filtering or flagging when this occurs.
 - Deploying a new simulator version does not require any change to Spring Boot or the domain model — only a new worker deployment and a MondeSetting update.
 - In a Kubernetes environment, each simulator version maps naturally to a separate `Deployment`. Scaling a version up or down is a replica count change. Retiring a version is `scale to 0`.
+- A Java worker may include a Rust sidecar/process or native library, but this is an implementation detail of that simulator version. Spring Boot still routes to `simulator.<version>.jobs`.
