@@ -2,8 +2,7 @@
 
 | # | Title | URL | Blocked by |
 |---|---|---|---|
-| 30 | Rust physics-core: full ball physics — trajectory, net, bounce, wind | https://github.com/MaximeD1412/NextTennisManager/issues/30 | — |
-| 31 | Rust physics-core: simulate_batch API and deterministic seeding | https://github.com/MaximeD1412/NextTennisManager/issues/31 | #30 |
+| 31 | Rust physics-core: simulate_batch API and deterministic seeding | https://github.com/MaximeD1412/NextTennisManager/issues/31 | — |
 | 32 | Java → Rust integration: sidecar, Protobuf batch transport, remove TrajectoireService | https://github.com/MaximeD1412/NextTennisManager/issues/32 | #31 |
 | 15 | Point simulation loop (Échange) | https://github.com/MaximeD1412/NextTennisManager/issues/15 | #32 |
 | 16 | Scoring system (Points → Games → Sets → Match) | https://github.com/MaximeD1412/NextTennisManager/issues/16 | #15 |
