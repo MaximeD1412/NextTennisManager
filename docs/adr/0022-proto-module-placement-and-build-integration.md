@@ -1,6 +1,6 @@
 # ADR-0022 — Proto module placement and build integration
 
-Le fichier `.proto` (contrat du simulateur, ADR-0019) vit dans `shared/proto/` à la racine du monorepo, déclaré comme sous-projet Gradle (`:shared:proto`). Il génère les stubs Java une seule fois ; `:simulator` et `:webapp:backend` déclarent `implementation(project(":shared:proto"))`. Le codegen TypeScript (ts-proto via grpc-tools) est déclenché par un script npm dans `NextManagerTennis_WebApp/frontend/`. Le code généré n'est jamais commité — il est produit au build. Un Makefile racine sert de point d'entrée unique (`make generate`) pour enchaîner le codegen TypeScript et `./gradlew build`.
+Le fichier `.proto` (contrat du simulateur, ADR-0019) vit dans `shared/proto/` à la racine du monorepo, déclaré comme sous-projet Gradle (`:shared:proto`). Il génère les stubs Java une seule fois ; `:simulator` et `:webapp:backend` déclarent `implementation(project(":shared:proto"))`. Le codegen TypeScript (ts-proto via grpc-tools) est déclenché par un script npm dans `NextManagerTennis_WebApp/frontend/`. Lorsque le `physics-core` Rust (ADR-0024) consomme la frontière Protobuf, ses types doivent aussi être générés depuis ce même fichier, par exemple via `prost`/`tonic` côté Cargo. Le code généré n'est jamais commité — il est produit au build. Un Makefile racine sert de point d'entrée unique (`make generate`) pour enchaîner le codegen TypeScript, Rust si activé, et `./gradlew build`.
 
 ## Considered Options
 
@@ -14,5 +14,5 @@ Le fichier `.proto` (contrat du simulateur, ADR-0019) vit dans `shared/proto/` �
 
 - `settings.gradle.kts` à la racine inclut `:shared:proto`, `:simulator`, `:webapp:backend` avec `projectDir` explicite pour les dossiers à nommage long.
 - `NextManagerTennis_WebApp/frontend/package.json` déclare `grpc-tools` et `ts-proto` en `devDependencies` et expose un script `generate:proto`.
-- Tout changement de `.proto` exige : (1) `make generate` pour régénérer TypeScript, (2) `./gradlew build` pour recompiler Java (ou `make generate` qui enchaîne les deux).
+- Tout changement de `.proto` exige : (1) `make generate` pour régénérer TypeScript et les types Rust si la frontière Rust utilise Protobuf, (2) `./gradlew build` pour recompiler Java (ou `make generate` qui enchaîne les builds nécessaires).
 - Le `.gitignore` exclut les dossiers de sortie du codegen (`build/generated/`, `src/generated/`).

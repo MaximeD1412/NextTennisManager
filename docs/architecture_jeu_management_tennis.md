@@ -188,16 +188,17 @@ Kafka pourrait devenir intéressant beaucoup plus tard si le jeu génère énorm
 
 ### Simulateur
 
-**Décision retenue : worker Java séparé.** Pas embarqué dans le processus Spring Boot — déployable indépendamment, versionnable via RabbitMQ (voir ADR-0006).
+**Décision retenue : worker Java séparé avec `physics-core` Rust.** Le worker Java n'est pas embarqué dans le processus Spring Boot — il est déployable indépendamment, versionnable via RabbitMQ (voir ADR-0006). La boucle chaude de physique de balle est déléguée à un noyau Rust batché (voir ADR-0024).
 
 Avantages :
 
-- Pas de communication inter-langage.
 - Même modèle métier que le backend.
 - Indépendamment scalable et retirable par version.
 - Compatible Kubernetes (Deployment séparé par version).
+- Physique dense isolée dans Rust : trajectoire 3D, spin, Magnus, Rebond, filet, bande et batch Monte Carlo.
+- Frontière claire : Java orchestre et score, Rust calcule la vérité physique.
 
-Note : un pipeline Python analytique offline (NumPy, SciPy, Monte Carlo) peut alimenter les stats depuis PostgreSQL. Il est distinct du simulateur temps réel et ne fait pas partie du flux live.
+Note : un pipeline Python analytique offline (NumPy, SciPy, notebooks) peut calibrer les coefficients depuis PostgreSQL ou depuis des exports de simulation. Il est distinct du simulateur officiel et ne fait pas partie du flux live.
 
 ---
 
@@ -378,10 +379,12 @@ Exemple de message :
 
 Responsabilités :
 
-- Exécuter le moteur de simulation.
+- Exécuter l'orchestration du moteur de simulation.
 - Simuler les points progressivement.
 - Lire les commandes tactiques depuis Redis.
 - Appliquer les changements tactiques au bon moment.
+- Générer et scorer les candidats de Coup pour l'IA.
+- Appeler le `physics-core` Rust par batch pour les trajectoires, Rebond, filet, bande et variantes Monte Carlo.
 - Publier les événements live dans Redis.
 - Mettre à jour l’état courant dans Redis.
 - Calculer les statistiques du match.
@@ -696,7 +699,7 @@ Pendant le match, le simulateur peut calculer :
 - rebond
 - spin
 - trajectoire
-- probabilité d’erreur
+- bruit d’exécution physique (timing, angle, vitesse, spin, contact)
 
 Mais à la fin, il peut ne sauvegarder que :
 
@@ -884,7 +887,13 @@ Statistiques possibles :
 
 ## 15. Monte Carlo
 
-À terme, le moteur pourrait simuler un match ou un tournoi plusieurs fois pour produire des probabilités.
+À terme, le moteur doit simuler un match, un point, un Coup candidat ou un tournoi plusieurs fois pour produire des probabilités et aider l'IA tactique.
+
+La responsabilité est séparée :
+
+- Java orchestre le Monte Carlo : état du Match, génération de candidats, stratégie, scoring, agrégation des résultats.
+- Rust `physics-core` simule les trajectoires physiques en batch : `simulate_batch(environment, shot_specs[], seed)`.
+- Python sert à analyser et calibrer les distributions offline, pas à produire la vérité officielle du simulateur.
 
 Exemple :
 
@@ -1001,8 +1010,8 @@ PLAYER_MOVE_SEGMENT
 BALL_FLIGHT_SEGMENT
 HIT
 BOUNCE
-BALL_OUT
-BALL_NET
+NET_INTERACTION
+SERVE_LET
 TACTIC_CHANGE
 FATIGUE_UPDATE
 POINT_END
@@ -1142,7 +1151,7 @@ Avantages :
 
 - compact
 - rapide
-- compatible Java/Python
+- compatible Java / TypeScript / Rust / Python offline
 - génère des classes automatiquement
 - versionnable
 - beaucoup moins lourd que JSON
@@ -1665,7 +1674,7 @@ Avoir un jeu fonctionnel sans sur-ingénierie.
 - pas encore de replay détaillé
 - pas encore de Redis Streams complexe si pas nécessaire
 
-Simulation en Java (worker séparé ou embarqué en Phase 1).
+Simulation orchestrée par le worker Java. La physique de balle cible déjà le `physics-core` Rust, même si une implémentation Java temporaire peut exister comme placeholder pendant la transition.
 
 ---
 
@@ -1700,6 +1709,7 @@ MATCH_END
 
 - RabbitMQ
 - Java worker
+- Rust physics-core
 - jobs de simulation
 - séparation backend / simulation
 - meilleure scalabilité
@@ -1841,7 +1851,7 @@ Raison :
 
 - compact
 - rapide
-- compatible Java/Python
+- compatible Java / TypeScript / Rust / Python offline
 - versionnable
 - bien meilleur que JSON pour ce cas
 
@@ -1970,8 +1980,10 @@ Backend:
 
 Simulation:
   - Java workers
+  - Rust physics-core
   - simulation live
   - simulation batch
+  - Monte Carlo batché
   - Redis live state
   - Redis Streams events
   - replay generation
@@ -2012,7 +2024,8 @@ PostgreSQL = vérité durable
 Redis = vérité live temporaire
 RabbitMQ = lancement et distribution des jobs
 Spring Boot = API, WebSocket, orchestration
-Java workers = moteur de simulation
+Java workers = orchestration simulation, IA, Match/Point/Score
+Rust physics-core = trajectoires physiques batchées
 NextJS = interface joueur
 Protobuf + Zstd = replay compact
 S3/MinIO = stockage des replays
@@ -2057,6 +2070,7 @@ PostgreSQL
 Redis
 RabbitMQ
 Java workers
+Rust physics-core
 Protobuf + Zstd
 S3/MinIO plus tard
 Discord bot plus tard
@@ -2070,5 +2084,7 @@ Le point d’architecture le plus important est de séparer les usages :
 - WebSocket sert uniquement à pousser le live au frontend.
 - Le replay détaillé ne doit être activé que pour les matchs qui le justifient.
 - Les simulations massives doivent sauvegarder uniquement les données utiles.
+- Java doit garder l'orchestration métier et l'IA.
+- Rust doit garder la physique de balle pure, déterministe et batchée.
 
 Cette approche permet de commencer simplement, tout en gardant une vraie trajectoire vers un jeu ambitieux et scalable.

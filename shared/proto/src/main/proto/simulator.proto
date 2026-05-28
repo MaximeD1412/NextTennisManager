@@ -90,9 +90,38 @@ enum PlayerTactic {
   PLAYER_TACTIC_SERVE_AND_VOLLEY = 6;
 }
 
+enum PlayerHand {
+  PLAYER_HAND_UNSPECIFIED = 0;
+  PLAYER_HAND_RIGHT = 1;
+  PLAYER_HAND_LEFT = 2;
+}
+
+enum FaultCause {
+  FAULT_CAUSE_UNSPECIFIED = 0;
+  FAULT_CAUSE_NET = 1;
+  FAULT_CAUSE_OUT_WIDE = 2;
+  FAULT_CAUSE_OUT_LONG = 3;
+  FAULT_CAUSE_WRONG_SERVICE_BOX = 4;
+}
+
+enum NetInteractionKind {
+  NET_INTERACTION_KIND_UNSPECIFIED = 0;
+  NET_INTERACTION_KIND_CLEAR = 1;
+  NET_INTERACTION_KIND_AROUND_NET = 2;
+  NET_INTERACTION_KIND_NET_FAULT = 3;
+  NET_INTERACTION_KIND_NET_TAPE_PASSED = 4;
+  NET_INTERACTION_KIND_NET_TAPE_FAILED = 5;
+}
+
 // ─── Shared types ─────────────────────────────────────────────────────────────
 
 message CourtPosition {
+  float x = 1;
+  float y = 2;
+  float z = 3;
+}
+
+message Vector3 {
   float x = 1;
   float y = 2;
   float z = 3;
@@ -163,6 +192,11 @@ message TennisPlayerSnapshot {
   float moral = 52;
   float rythme = 53;
   PlayerTactic active_tactic = 54;
+  // Morphology: generated at Personne creation, not trainable attributes.
+  float height_m = 55;
+  float standing_reach_m = 56;
+  float body_mass_kg = 57;
+  PlayerHand dominant_hand = 58;
 }
 
 message ScoreSnapshot {
@@ -286,6 +320,14 @@ message Fault {
   string server_id = 1;
   int32 serve_number = 2;
   CourtPosition landing_position = 3;
+  FaultCause cause = 4;
+}
+
+message ServeLet {
+  string server_id = 1;
+  int32 serve_number = 2;
+  CourtPosition landing_position = 3;
+  NetInteractionKind net_interaction = 4;
 }
 
 // ─── Visual events ────────────────────────────────────────────────────────────
@@ -296,6 +338,32 @@ message BallFlightSegment {
   float duration_ms = 3;
   float speed_kmh = 4;
   ShotEffect spin = 5;
+  Vector3 start_velocity = 6;
+  Vector3 end_velocity = 7;
+  float spin_rpm = 8;
+  Vector3 spin_axis = 9;
+  float peak_height = 10;
+}
+
+message Bounce {
+  CourtPosition position = 1;
+  Vector3 incoming_velocity = 2;
+  Vector3 outgoing_velocity = 3;
+  float incoming_spin_rpm = 4;
+  float outgoing_spin_rpm = 5;
+  Vector3 incoming_spin_axis = 6;
+  Vector3 outgoing_spin_axis = 7;
+  Surface surface = 8;
+  float surface_wetness = 9;
+}
+
+message NetInteraction {
+  NetInteractionKind kind = 1;
+  CourtPosition position = 2;
+  float net_height_m = 3;
+  Vector3 velocity_at_net = 4;
+  float spin_rpm_at_net = 5;
+  float pass_probability = 6;
 }
 
 // ─── User events ──────────────────────────────────────────────────────────────
@@ -327,5 +395,8 @@ message SimulatorEvent {
     Fault fault = 14;
     BallFlightSegment ball_flight_segment = 15;
     TacticChange tactic_change = 16;
+    ServeLet serve_let = 17;
+    Bounce bounce = 18;
+    NetInteraction net_interaction = 19;
   }
 }
