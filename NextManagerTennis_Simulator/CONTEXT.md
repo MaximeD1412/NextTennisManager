@@ -167,6 +167,35 @@ Tableau de référence pour l'implémentation. Chaque Attribut est mappé à son
 | Vision du court | Intelligence de jeu | Qualité géométrique du CourtPosition cible — espaces libres, angles créés |
 | Exploitation des faiblesses | Intelligence de jeu | Module le gain extrait en ciblant les Attributs faibles adverses — persistance et précision du ciblage sous pression |
 
+## Testing
+
+### Stack
+
+JUnit 5 (`@Test`) + AssertJ (`assertThat`). Pas de Spring context — tous les tests sont des tests unitaires purs qui instancient directement la classe testée.
+
+### Règles
+
+**Pas de mocks.** Instancier les dépendances directement (`new ServeSimulator(new Random(42))`). Si une dépendance devient trop lourde à instancier, c'est un signal de design, pas une raison d'introduire Mockito.
+
+**Random seedé.** Toujours passer `new Random(seed)` avec un seed fixe pour les tests déterministes. Utiliser `new Random(0)` ou `new Random(42)` par convention.
+
+**Tests statistiques pour les comportements probabilistes.** Lancer N tirages (typiquement 1000), asserter sur un compteur avec une marge >3σ. Documenter le raisonnement statistique en commentaire inline :
+```java
+// P(in)=0.99 over 1000 trials: threshold 970 is >3σ below the mean 990
+assertThat(inCount).isGreaterThan(969);
+```
+
+**Service comme champ de classe** quand il n'a pas de dépendance aléatoire :
+```java
+private final PlayerMovementService service = new PlayerMovementService();
+```
+
+**Méthodes helper privées** regroupées en bas du fichier sous un séparateur `// ─── helpers ─────`. Elles construisent les proto builders (`TennisPlayerSnapshot`, `CourtPosition`, `BallFlightSegment`) pour éviter la répétition dans chaque test.
+
+**Nommage** : camelCase, exprime le comportement attendu en anglais (`highReliabilityFirstServeGoesInNearlyAlways`, `producesLateWhenMarginIsSmallPositive`).
+
+**Pas de `@BeforeEach`** sauf si le setup est identique dans tous les tests de la classe. Préférer des helpers appelés explicitement dans chaque test.
+
 ## Termes à éviter dans ce contexte
 
 | Éviter | Utiliser | Raison |
