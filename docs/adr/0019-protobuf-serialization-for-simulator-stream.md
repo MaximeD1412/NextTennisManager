@@ -32,7 +32,7 @@ JSON a été rejeté pour trois raisons :
 
 1. **Encodage binaire compact.** Les types numériques (CourtPosition, HitQuality, timestamps) sont encodés efficacement — les payloads sont significativement plus petits qu'en JSON pour les mêmes données.
 
-2. **Schéma comme contrat compilé.** Le fichier `.proto` définit l'ensemble des 14 types d'événements (ADR-0018) et leurs champs. Spring Boot et Next.js génèrent des clients typés depuis ce fichier — toute modification du schéma produit une erreur de compilation dans les deux services avant le déploiement.
+2. **Schéma comme contrat compilé.** Le fichier `.proto` définit l'ensemble des types d'événements du stream simulateur (ADR-0018) et leurs champs. Spring Boot et Next.js génèrent des clients typés depuis ce fichier — toute modification du schéma produit une erreur de compilation dans les deux services avant le déploiement.
 
 3. **Évolution de schéma balisée.** Protobuf assure la compatibilité ascendante via les numéros de champs — un champ ajouté en version N+1 n'invalide pas les consommateurs de la version N. Les champs supprimés sont marqués `reserved`. La gestion de version du schéma est explicite.
 
@@ -44,9 +44,9 @@ Les types partagés (CourtPosition, ScoreSnapshot, PlayerTactic, MatchStats) son
 
 ## Consequences
 
-- Un fichier `.proto` (ou ensemble de fichiers) définit les 14 types d'événements du stream (ADR-0018) et les types de données partagés (`CourtPosition`, `ScoreSnapshot`, etc.). C'est la source de vérité des types pour les deux services.
+- Un fichier `.proto` (ou ensemble de fichiers) définit les types d'événements du stream (ADR-0018) et les types de données partagés (`CourtPosition`, `Vector3`, `ScoreSnapshot`, etc.). C'est la source de vérité des types pour les deux services.
 - Spring Boot utilise `protoc` + le plugin Java pour générer les classes d'événements. Next.js utilise `protoc` + le plugin TypeScript (e.g. `ts-proto`) pour les types et helpers de sérialisation.
 - Un changement de schéma (ajout, renommage, suppression de champ) exige : (1) mise à jour du `.proto`, (2) régénération des clients dans les deux services, (3) déploiement coordonné.
 - Les champs supprimés doivent être marqués `reserved` dans le `.proto` — jamais réutilisés avec un numéro de champ existant.
-- Les paramètres physiques internes du simulateur (coefficients d'accumulation de fatigue, poids d'ErrorProbability, etc.) ne font pas partie du `.proto` — ils restent dans ConfigurationGlobale et ne transitent pas dans le stream.
+- Les paramètres physiques internes du simulateur (coefficients d'accumulation de fatigue, courbes de bruit d'exécution, coefficients de Rebond, coefficients Magnus, coefficients de bande du filet, etc.) ne font pas partie du `.proto` — ils restent dans ConfigurationGlobale et ne transitent pas dans le stream.
 - Le format Protobuf s'applique au stream simulateur uniquement. Les autres API du projet (REST WebApp, WebSocket de gestion) ne sont pas concernées par cette décision.

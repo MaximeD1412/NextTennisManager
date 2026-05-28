@@ -696,7 +696,7 @@ Pendant le match, le simulateur peut calculer :
 - rebond
 - spin
 - trajectoire
-- probabilité d’erreur
+- bruit d’exécution physique (timing, angle, vitesse, spin, contact)
 
 Mais à la fin, il peut ne sauvegarder que :
 
@@ -1001,8 +1001,8 @@ PLAYER_MOVE_SEGMENT
 BALL_FLIGHT_SEGMENT
 HIT
 BOUNCE
-BALL_OUT
-BALL_NET
+NET_INTERACTION
+SERVE_LET
 TACTIC_CHANGE
 FATIGUE_UPDATE
 POINT_END

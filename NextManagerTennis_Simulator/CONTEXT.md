@@ -5,26 +5,99 @@ Le moteur de simulation reçoit le snapshot d'un Match (TennisPlayers, Tactiques
 ## Glossaire
 
 ### CourtPosition
-Un point dans l'espace 3D du terrain, défini par trois coordonnées : **x** (largeur, 0 = côté gauche), **y** (profondeur, 0 = filet, positif vers le fond de court), **z** (hauteur au-dessus de la surface, 0 = sol). L'origine est au centre du filet. Ne pas utiliser "coordonnées" seul — utiliser CourtPosition.
+Un point dans l'espace 3D du terrain, défini par trois axes métriques avec origine au centre du filet :
+
+- **x** : largeur du terrain, `x = 0` sur la ligne centrale. Valeurs négatives d'un côté, positives de l'autre. En simple, la balle est dans le couloir jouable si `abs(x) <= 4.115`.
+- **y** : profondeur, `y = 0` sur le plan du filet. `y > 0` désigne un fond de court, `y < 0` l'autre fond de court. La ligne de fond est à `abs(y) = 11.89`.
+- **z** : hauteur au-dessus de la surface, `z = 0` au sol.
+
+Ne jamais utiliser `x = 0` comme "côté gauche" : `x = 0` est le centre du terrain. `CourtSide.DEUCE/AD` est une notion de service relative au serveur et doit être convertie en zone cible à partir du côté de service (`sign(y)`), pas supposée équivalente à un signe de `x` universel. Ne pas utiliser "coordonnées" seul — utiliser CourtPosition.
 
 ### Coup
-Une frappe de balle effectuée par un joueur. Caractérisé par : une zone cible (CourtPosition), une vitesse initiale, un type de spin, et un niveau de risque issu de la Tactique. Le Coup génère une Trajectoire et déclenche un calcul de HitQuality. Ne pas utiliser "tir" — utiliser "Coup".
+Une frappe de balle effectuée par un joueur. Un Coup est décrit en deux temps :
+
+1. **ShotPlan** — intention tactique : zone cible, marge de filet désirée, vitesse désirée, Effet désiré, type de trajectoire, niveau de risque.
+2. **ShotExecution** — exécution physique effective : CourtPosition de contact, vitesse initiale 3D, axe de spin, spin RPM, erreur de timing/contact, angle de raquette.
+
+Le hasard intervient dans ShotExecution (bruit d'exécution), pas comme un verdict direct `in/out`. Le Coup génère une Trajectoire et déclenche un calcul de HitQuality. Ne pas utiliser "tir" — utiliser "Coup".
 
 Cas spécial — **BOISÉ** : un Coup sur le cadre de la raquette, extrêmement rare. Le joueur a atteint la balle (ReachResult valide, généralement COMFORTABLE ou LATE) mais le contact est raté. Représenté par `frameHit: true` sur l'événement `SHOT` du stream. HitQuality forcé à quasi zéro ; variance de Trajectoire maximale et aléatoire — la balle peut atterrir n'importe où. Le Point continue normalement après l'impact. Pas un ReachResult distinct ni une IssueDuPoint distincte.
 
 ### Trajectoire
-Le chemin 3D paramétrique d'un Coup depuis la frappe jusqu'au Rebond ou la sortie du terrain. Décrite par une CourtPosition de départ, une CourtPosition d'arrivée **effective**, une durée, une hauteur de pic, un vecteur de spin, et une vitesse. La CourtPosition d'arrivée effective est calculée à partir de la zone cible (issue de la Tactique) avec une variance modulée par le HitQuality : un HitQuality élevé produit une arrivée précise ; un HitQuality faible (ReachResult `STRETCHED` ou `DESPERATE`) produit une dispersion plus large, pouvant envoyer la balle hors des limites du terrain ou dans le filet. Si la CourtPosition d'arrivée effective est hors limites, l'IssueDuPoint est `FAUTE_NON_FORCÉE` ou `FAUTE_FORCÉE` selon le HitQuality.
+Le chemin 3D d'un Coup depuis la frappe jusqu'au Rebond, au filet, ou à la sortie de la zone de simulation. La Trajectoire est produite par intégration physique à partir de ShotExecution : position, vitesse 3D, gravité, traînée, Magnus, Vent, surface et humidité.
+
+La CourtPosition d'arrivée effective n'est pas tirée directement comme verdict du Coup. Elle émerge de la trajectoire intégrée. HitQuality module l'amplitude des erreurs d'exécution (direction, vitesse, spin, hauteur de contact, timing), qui peuvent produire une balle bonne, longue, large, dans le filet, ou boisée. Si la CourtPosition d'arrivée effective est hors limites ou si la balle ne franchit pas le filet, l'IssueDuPoint est `FAUTE_NON_FORCÉE` ou `FAUTE_FORCÉE` selon la pression subie et la difficulté du Coup — pas selon une probabilité indépendante.
 
 Sur les surfaces extérieures (`CLAY`, `GRASS`, `HARD`), le Vent courbe la balle en vol — la déviation latérale croît avec la hauteur (`z`) et la durée de vol. Le simulateur émet la Trajectoire en segments successifs via `BALL_FLIGHT_SEGMENT`, calculés progressivement (pas de pré-calcul de la trajectoire complète à l'impact). Sur `INDOOR_HARD` (sans Vent), un seul `BALL_FLIGHT_SEGMENT` suffit par Coup. Sert de base au calcul de AvailableTime pour l'adversaire.
 
+### Moteur Physique de Balle
+Le simulateur doit utiliser un moteur commun pour tous les Coups, services inclus. Le moteur reçoit ShotExecution et retourne une Trajectoire intégrée.
+
+État minimal de balle :
+
+```text
+position = (x, y, z)
+velocity = (vx, vy, vz)
+spinRpm
+spinAxis = vecteur 3D normalisé
+```
+
+Forces minimales :
+
+```text
+gravity
+drag aérodynamique
+Magnus issu de spinRpm et spinAxis
+Vent sur surfaces extérieures
+```
+
+Le `ShotEffect` (`FLAT`, `TOPSPIN`, `SLICE`, `LIFT`) est une intention d'effet, pas une force physique suffisante. Il doit être converti en `spinRpm` et `spinAxis`. Le topspin/lift doit permettre une balle lancée plus haut qui redescend plus vite par Magnus ; il ne doit pas être modélisé comme un simple bonus de hauteur.
+
+### Filet et Bande
+Le filet est un obstacle géométrique, pas une déduction depuis la CourtPosition d'arrivée.
+
+Dimensions de référence :
+
+```text
+NET_CENTER_HEIGHT_M = 0.914
+NET_POST_HEIGHT_M = 1.07
+NET_POST_X_M = 5.029
+BALL_RADIUS_M = 0.0335
+```
+
+À chaque passage de la Trajectoire à travers le plan `y = 0`, le simulateur interpole `xNet`, `zNet` et `vNet`.
+
+Règles :
+
+- `abs(xNet) > NET_POST_X_M + BALL_RADIUS_M` : la balle passe autour du filet, pas de collision filet.
+- `zNet >= netHeightAtX + BALL_RADIUS_M` : la balle franchit clairement le filet.
+- `zNet <= netHeightAtX - BALL_RADIUS_M` : la balle touche le filet et ne passe pas.
+- sinon : contact avec la bande du filet.
+
+Une balle qui touche la bande peut passer. Le tirage est déterministe par Coup (`matchId`, `pointIndex`, `shotIndex`, suffixe `"netTape"`), et la probabilité dépend au minimum de la hauteur relative sur la bande, de la vitesse au filet, de la vitesse verticale et du spin. Si la bande laisse passer la balle, la trajectoire continue avec perte d'énergie et de spin ; le point ou le service n'utilise pas l'atterrissage prévu avant contact.
+
+Sur service, une bande qui passe et tombe dans le bon carré produit un **Let de service** : le service est rejoué, ce n'est ni une faute ni un point terminé.
+
 ### Rebond
-L'impact de la balle sur la surface du terrain. Modifie la vitesse et la direction de la balle selon la surface (`CLAY` | `GRASS` | `HARD` | `INDOOR_HARD`). La surface influence la hauteur du rebond (clay = rebond haut et lent, grass = rebond bas et rapide) et donc le AvailableTime du joueur suivant. L'Humidité de Surface modifie ces paramètres sur les surfaces extérieures — voir Humidité de Surface.
+L'impact de la balle sur la surface du terrain. Le Rebond transforme la vitesse et le spin entrants en vitesse et spin sortants selon :
+
+- surface (`CLAY` | `GRASS` | `HARD` | `INDOOR_HARD`) ;
+- humidité de surface ;
+- vitesse verticale et horizontale entrante ;
+- spinRpm et spinAxis entrants ;
+- coefficients de restitution et de friction configurables.
+
+La surface influence la hauteur du rebond (clay = rebond plus haut et plus lent, grass = rebond plus bas et plus fusant) et donc AvailableTime. L'Humidité de Surface modifie ces paramètres sur les surfaces extérieures — voir Humidité de Surface. Le Rebond doit être représentable dans le stream Live par un événement dédié ou par des segments portant explicitement la transition pré/post-rebond.
 
 ### AvailableTime
-Le temps dont dispose un joueur entre sa position courante et le moment où il doit frapper. Recalculé à chaque `BALL_FLIGHT_SEGMENT` reçu : chaque segment précise la zone d'arrivée probable, le joueur ajuste son déplacement en conséquence. Sur `INDOOR_HARD` (sans Vent), un seul segment suffit — la zone d'arrivée est connue dès l'impact adverse. Sur les surfaces extérieures, la zone d'arrivée se précise progressivement ; un Vent plus fort que prévu sur un lob peut dégrader le ReachResult attendu jusqu'au dernier segment. Réduit par le ReactionDelay du joueur (influencé par l'Attribut anticipation).
+Le temps dont dispose un joueur entre sa position courante et sa fenêtre de frappe jouable. Ce n'est pas seulement le temps jusqu'au premier Rebond : selon le type de Coup, le joueur peut frapper avant Rebond (volée), juste après Rebond, ou plus tard dans la trajectoire post-rebond. Recalculé à chaque `BALL_FLIGHT_SEGMENT` reçu : chaque segment précise la zone d'arrivée probable, le joueur ajuste son déplacement en conséquence.
+
+AvailableTime est réduit par le ReactionDelay, influencé par Lecture du jeu, Lecture de service, Vision du court, l'effet de surprise tactique, et la lisibilité du Coup adverse.
 
 ### RequiredTime
-Le temps minimal nécessaire au joueur pour couvrir la distance entre sa CourtPosition courante et la zone d'arrivée de la balle, et se stabiliser avant la frappe. Dépend de : la distance à parcourir, les Attributs physiques du joueur (vitesse, explosivité), le coefficient de Fatigue (0.0–1.0), et l'Humidité de Surface (courbes par surface — réduction sur CLAY humide, augmentation sur GRASS et HARD humides). Ne pas confondre avec AvailableTime — ces deux valeurs sont calculées indépendamment puis comparées.
+Le temps minimal nécessaire au joueur pour atteindre une fenêtre de frappe jouable et se stabiliser avant le contact. Dépend de : distance à parcourir, accélération, vitesse maximale, changement de direction, split-step, portée de raquette, Attributs physiques, Fatigue effective, Humidité de Surface et qualité des appuis.
+
+RequiredTime ne doit pas viser exactement la CourtPosition de Rebond si une frappe réaliste se joue à une autre hauteur ou après déplacement post-rebond. Ne pas confondre avec AvailableTime — ces deux valeurs sont calculées indépendamment puis comparées.
 
 ### ReachResult
 Le résultat de la comparaison `AvailableTime − RequiredTime`. Cinq valeurs :
@@ -35,7 +108,9 @@ Le résultat de la comparaison `AvailableTime − RequiredTime`. Cinq valeurs :
 - `MISSED` — marge négative franche. Le joueur n'atteint pas la balle : le Point se termine immédiatement (IssueDuPoint = `COUP_GAGNANT` pour l'adversaire).
 
 ### HitQuality
-Coefficient normalisé (0.0–1.0) représentant la qualité d'exécution d'un Coup. Déterminé par : la marge du ReachResult, le coefficient de Fatigue, et les Attributs Technique du joueur (coup droit, revers, service, volley selon le type de Coup). Pilote la variance de la CourtPosition d'arrivée effective de la Trajectoire autour de la zone cible : un HitQuality de 1.0 produit une Trajectoire précise ; un HitQuality proche de 0.0 (ReachResult `DESPERATE`, haute Fatigue) produit une dispersion maximale pouvant envoyer la balle hors des limites du terrain ou dans le filet. L'IssueDuPoint (`FAUTE_NON_FORCÉE`, `FAUTE_FORCÉE`) est déterminé par la CourtPosition d'arrivée effective — pas par une probabilité échantillonnée séparément.
+Coefficient normalisé (0.0–1.0) représentant la qualité d'exécution d'un Coup. Déterminé par : la marge du ReachResult, le coefficient de Fatigue, le Rythme, les Attributs Technique du joueur, l'effet entrant, la hauteur de balle et la stabilité au contact.
+
+HitQuality ne tire jamais directement une faute. Il pilote l'erreur d'exécution physique : bruit sur direction, vitesse initiale, angle vertical, spin, point de contact, timing et choix de zone. Une CourtPosition d'arrivée effective hors limites ou une collision filet émerge ensuite de la Trajectoire.
 
 
 ### Échange
@@ -52,7 +127,45 @@ L'événement terminal d'un Point. Cinq valeurs :
 Ne pas utiliser "erreur" seul — préciser FAUTE_NON_FORCÉE ou FAUTE_FORCÉE.
 
 ### Contrat du Simulateur
-L'interface fixe entre le contexte WebApp et le Simulator, définie dans ADR-0004. Le simulateur reçoit : les Attributs de chaque TennisPlayer (1–99), leurs états dynamiques (Fatigue, Rythme, Moral en 0.0–1.0), leur Tactique active, la surface du Match, le format (BEST_OF_3 | BEST_OF_5), le VENT_MOYEN du Créneau `(direction: float, intensité: float)`, `surface_wetness_initial: float` (0.0–1.0), `precipitation_active: bool`, et `surface_drying_rate: float` (taux de séchage par Point, calculé par le WebApp depuis la base ConfigurationGlobale modulée par la Protection du terrain du Tournoi) — les quatre derniers nuls/false/0.0 pour `INDOOR_HARD`. Il retourne : le vainqueur, le score complet, les stats du Match, et — si activé — les événements de replay. Les paramètres physiques internes (vitesse maximale par unité d'Attribut, courbes d'ErrorProbability, etc.) sont tunables via ConfigurationGlobale/MondeSetting et ne font **pas** partie du contrat fixe.
+L'interface fixe entre le contexte WebApp et le Simulator, définie dans ADR-0004. Le simulateur reçoit : les Attributs de chaque TennisPlayer (1–99), leurs états dynamiques (Fatigue, Rythme, Moral en 0.0–1.0), leur morphologie physique minimale (`height_m`, `standing_reach_m`, `body_mass_kg`, main dominante), leur Tactique active, la surface du Match, le format (BEST_OF_3 | BEST_OF_5), le VENT_MOYEN du Créneau `(direction: float, intensité: float)`, `surface_wetness_initial: float` (0.0–1.0), `precipitation_active: bool`, et `surface_drying_rate: float` (taux de séchage par Point, calculé par le WebApp depuis la base ConfigurationGlobale modulée par la Protection du terrain du Tournoi) — les quatre derniers nuls/false/0.0 pour `INDOOR_HARD`. Il retourne : le vainqueur, le score complet, les stats du Match, et — si activé — les événements de replay.
+
+Les paramètres physiques internes (vitesse maximale par unité d'Attribut, coefficients de traînée, coefficients Magnus, restitution de Rebond, courbes de bruit d'exécution, coefficients de bande du filet, etc.) sont tunables via ConfigurationGlobale/MondeSetting et ne font **pas** partie du contrat fixe. Ne pas introduire de probabilité de faute indépendante.
+
+### Morphologie du TennisPlayer
+La morphologie n'est pas un Attribut entraînable : elle est générée à la création de la Personne et transmise au Simulator.
+
+Champs minimaux :
+
+- `height_m` : taille debout.
+- `standing_reach_m` : allonge bras levé, plus directement utile que la taille pour le service et les smashes.
+- `body_mass_kg` : utile pour fatigue, explosivité, inertie et risque de glissement/blessure.
+- `dominant_hand` : main dominante, utile pour géométrie de service, slice, angles, zones de confort.
+
+Au service, la hauteur de contact doit émerger de :
+
+```text
+serveContactHeight =
+  standingReachM
+  + racketSweetSpotReachM
+  + jumpLiftM
+  - contactLossM
+  + contactNoiseM
+```
+
+Un grand serveur ne reçoit pas un bonus arbitraire de réussite : son avantage vient d'une hauteur de contact supérieure, donc d'une fenêtre angulaire plus large au-dessus du filet et vers le carré de service.
+
+### Service Physique
+Le service est un Coup physique comme les autres. `Fiabilité service` et `Second service` ne sont pas des probabilités directes de réussite. Ils modulent le bruit d'exécution, le choix de marge, la prise de risque, la stabilité de la hauteur de contact et la cohérence du spin.
+
+Le service doit :
+
+- construire un ShotPlan selon première/deuxième balle, Tactique, CourtSide, main dominante et côté de service ;
+- calculer une CourtPosition de contact avec la morphologie du serveur ;
+- convertir le plan en ShotExecution physique ;
+- intégrer la trajectoire avec filet, bande, spin, Vent et Rebond ;
+- classifier le résultat : service bon, faute, let, ace potentiel après ReachResult du relanceur.
+
+Une première balle et une deuxième balle utilisent le même moteur. La différence vient de la vitesse désirée, du spin désiré, de la marge de filet, de la cible et de la tolérance d'exécution.
 
 ### Intention de Coup (Shot Intent)
 L'intention offensivo-défensive d'un Coup, déterminée avant chaque frappe. Trois valeurs :
@@ -127,19 +240,19 @@ Tableau de référence pour l'implémentation. Chaque Attribut est mappé à son
 | Récupération inter-points | Physique | Taux de dissipation de la fatigue intra-match entre les points |
 | Puissance service | Technique | Vitesse initiale de balle dans la Trajectoire du service |
 | Précision service | Technique | Dispersion autour du CourtPosition cible dans la zone de service |
-| Fiabilité service | Technique | ErrorProbability sur la première balle de service |
-| Second service | Technique | ErrorProbability et HitQuality sur la deuxième balle de service |
+| Fiabilité service | Technique | Réduit le bruit d'exécution sur première balle : timing, angle vertical, direction, spin, hauteur de contact |
+| Second service | Technique | Réduit le bruit d'exécution sur deuxième balle et favorise une marge de filet/spin plus sûre |
 | Variété service | Technique | Coefficient réducteur sur l'effet de Lecture de service adverse (réduit la réduction du ReactionDelay) |
 | Retour coup droit | Technique | HitQuality pour le retour de service joué côté coup droit |
 | Retour revers | Technique | HitQuality pour le retour de service joué côté revers |
 | Lecture de service | Technique | Réduit le ReactionDelay sur le retour (anticipation zone/effet/vitesse du service) |
 | Puissance coup droit | Technique | Vitesse initiale de balle dans la Trajectoire du coup droit |
 | Précision coup droit | Technique | Dispersion autour du CourtPosition cible pour le coup droit |
-| Régularité coup droit | Technique | ErrorProbability pour le coup droit |
+| Régularité coup droit | Technique | Répétabilité technique : réduit le bruit d'exécution côté coup droit |
 | Coup droit en course | Technique | Taux de dégradation du HitQuality coup droit quand ReachResult = STRETCHED |
 | Puissance revers | Technique | Vitesse initiale de balle dans la Trajectoire du revers |
 | Précision revers | Technique | Dispersion autour du CourtPosition cible pour le revers |
-| Régularité revers | Technique | ErrorProbability pour le revers |
+| Régularité revers | Technique | Répétabilité technique : réduit le bruit d'exécution côté revers |
 | Revers en course | Technique | Taux de dégradation du HitQuality revers quand ReachResult = STRETCHED |
 | Volée coup droit | Technique | HitQuality pour la volée côté coup droit |
 | Volée revers | Technique | HitQuality pour la volée côté revers |
@@ -151,7 +264,7 @@ Tableau de référence pour l'implémentation. Chaque Attribut est mappé à son
 | Glissade | Technique | Réduit le RequiredTime sur surface CLAY (glissade = extension de reach sans perte d'Équilibre) ; réduit additionnellement la probabilité de glissement accidentel sur CLAY humide |
 | Passing | Technique | HitQuality pour le passing shot quand l'adversaire est en CourtPosition filet |
 | Lob | Technique | HitQuality pour le lob (Trajectoire à arc z élevé) quand l'adversaire est en CourtPosition filet |
-| Remise difficile | Technique | Probabilité de remettre en jeu une balle avec ReachResult near-MISSED (Intention DEFENSIVE) |
+| Remise difficile | Technique | Qualité d'une ShotExecution défensive sur balle near-MISSED : contact, contrôle minimal, hauteur suffisante |
 | Lift | Technique | Modifie le Rebond : rebond haut et lourd — augmente la distance de frappe requise pour l'adversaire |
 | Slice | Technique | Modifie le Rebond : rebond bas et rapide — réduit le AvailableTime de l'adversaire |
 | Amortie coup droit | Technique | HitQuality pour l'amortie (Trajectoire courte + basse) côté coup droit |
@@ -205,7 +318,7 @@ private final PlayerMovementService service = new PlayerMovementService();
 | Erreur | FAUTE_NON_FORCÉE ou FAUTE_FORCÉE | Trop ambigu |
 | Créneau, Activité, Contrat | — | Concepts du contexte WebApp, absents du Simulator |
 | Match physique | Match | "physique" est redondant, toute simulation est physique ici |
-| ErrorProbability | — | Concept supprimé — l'erreur émerge de la CourtPosition d'arrivée effective de la Trajectoire, modulée par HitQuality |
+| Probabilité de faute indépendante | Bruit d'exécution physique | L'erreur émerge de ShotExecution puis de la Trajectoire, pas d'un tirage `in/out` séparé |
 
 ## Exemple de dialogue
 
@@ -215,8 +328,8 @@ private final PlayerMovementService service = new PlayerMovementService();
 >
 > **Dev** : Et une faute directe en coup droit, c'est différent ?
 >
-> **Domaine** : Oui, complètement. Le joueur a atteint la balle (ReachResult = COMFORTABLE ou STRETCHED), mais l'ErrorProbability a déclenché — le Coup atterrit dehors. Si le HitQuality était élevé malgré tout, c'est une FAUTE_NON_FORCÉE. Si le HitQuality était faible parce que l'adversaire l'a mis sous pression, c'est une FAUTE_FORCÉE.
+> **Domaine** : Oui, complètement. Le joueur a atteint la balle (ReachResult = COMFORTABLE ou STRETCHED), mais son exécution physique a généré une trajectoire dehors ou dans le filet. Si le joueur était confortable et que la difficulté adverse était faible, c'est une FAUTE_NON_FORCÉE. Si la faute vient d'une position difficile créée par l'adversaire, c'est une FAUTE_FORCÉE.
 >
-> **Dev** : Et le HitQuality, c'est calculé avant ou après l'ErrorProbability ?
+> **Dev** : Et le HitQuality, c'est calculé avant ou après la trajectoire ?
 >
-> **Domaine** : Avant. Le HitQuality est calculé dès que le joueur frappe — il définit la dispersion de la Trajectoire et la valeur d'ErrorProbability. Ensuite on tire l'ErrorProbability. Dans cet ordre.
+> **Domaine** : Avant. Le HitQuality est calculé dès que le joueur frappe — il définit l'amplitude du bruit d'exécution. Ensuite la Trajectoire est intégrée physiquement ; la faute, le filet ou la balle bonne émergent de cette trajectoire.

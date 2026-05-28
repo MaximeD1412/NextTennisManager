@@ -21,7 +21,7 @@ Use **versioned RabbitMQ queues** (option 2).
 - Version changes are made by updating `MondeSetting.simulatorVersion`. The preferred window is Pré-Saison; mid-Saison changes are permitted for critical fixes but result in intra-Saison stats that are not comparable across the version boundary.
 - Retiring a version: drain its queue, then stop and remove the worker deployment.
 
-The simulator contract defined in ADR-0004 (Attributs on a 1–99 scale, dynamic states as 0.0–1.0 coefficients) remains fixed across all versions. A new simulator version may interpret those inputs differently (algorithm changes, balance changes), but must consume the same interface. Changes to the interface itself require a simulator contract version bump, which is a separate concern from the worker routing version.
+The simulator contract defined in ADR-0004 (Attributs on a 1–99 scale, dynamic states as 0.0–1.0 coefficients, stable physical inputs such as morphology, and match environment coefficients) remains fixed across all versions. A new simulator version may interpret those inputs differently (algorithm changes, balance changes), but must consume the same interface. Changes to the interface itself require a simulator contract version bump, which is a separate concern from the worker routing version.
 
 ## Consequences
 - Each active simulator version requires a running worker process. The number of simultaneously active versions should be kept small (typically 1–2: current stable + candidate under test).

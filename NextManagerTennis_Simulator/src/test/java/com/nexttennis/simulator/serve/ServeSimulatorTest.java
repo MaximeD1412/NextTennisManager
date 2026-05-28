@@ -12,6 +12,10 @@ import java.util.stream.IntStream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ServeSimulatorTest {
+    /*
+     * Tests for the legacy placeholder service model.
+     * They document current behavior only; they are not the target physics model.
+     */
 
     @Test
     void serveStartPopulatedBeforeFirstServe() {
