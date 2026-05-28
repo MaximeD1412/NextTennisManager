@@ -10,6 +10,8 @@ NextManagerTennis_WebApp/frontend/src/generated/
 physics-core/src/generated/
 
 # Rust build artifacts
+/target/
+/Cargo.lock
 physics-core/target/
 physics-core/Cargo.lock
 
