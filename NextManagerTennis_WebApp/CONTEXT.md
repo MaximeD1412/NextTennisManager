@@ -345,6 +345,8 @@ The atomic progression unit within a Phase. A Tour is a set of Matches played at
 ### Match
 A single encounter between two TennisPlayers within a Tour. Simulated in either Live or Batch mode. The Match is the unit of work dispatched to the simulation engine.
 
+The WebApp dispatches to the Java simulator worker only. The worker may use an internal Rust `physics-core` for ball physics and Monte Carlo, but this is not a WebApp integration point. The WebApp contract remains the simulator snapshot, `simulatorVersion`, result payload and replay/events schema.
+
 ### Live (Simulation Live)
 A Match simulation followed in real time by a User. The User can change Tactics mid-match. Events are streamed via WebSocket. The source of truth for live state is Redis. On reconnection, the full event history is replayed from Redis — the client reconstructs the current match state before resuming the real-time stream. The Match continues without interruption regardless of client connection state.
 

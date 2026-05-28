@@ -20,5 +20,6 @@ This enables test Mondes for rebalancing experiments without special-casing the 
 ## Consequences
 - Any parameter that should be tunable must be externalised to ConfigurationGlobale from the start — it cannot be added later without a migration.
 - The boundary (tunable vs fixed) must be enforced explicitly: the simulator interface is the authoritative definition of the fixed contract. Changes to the Attribut model require a simulator interface version bump.
+- The internal Java -> Rust physics boundary (ADR-0024) is not exposed to the WebApp, but it must remain derived from the fixed simulator contract plus tunable physical coefficients. Rust must not introduce a second hidden game-domain contract.
 - MondeSetting grows as the parameter surface grows — it is a diff, not a full copy, to avoid duplication with ConfigurationGlobale.
 - Test Mondes can run with aggressive values (e.g. 10× progression rates) without affecting production Mondes.

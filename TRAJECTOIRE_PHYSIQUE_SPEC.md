@@ -42,7 +42,24 @@ Ce raccourci empeche de detecter:
 
 ## Principe de solution
 
-Creer un moteur physique commun pour tous les Coups, par exemple `BallPhysics` ou `TrajectoryPhysicsService`.
+Creer un moteur physique commun pour tous les Coups. L'architecture cible est:
+
+```text
+Java simulator worker
+  - orchestre Match / Point / Score
+  - gere TennisPlayer, Attributs, Fatigue, Moral, Tactique
+  - genere et score les candidats de Coup
+  - orchestre le Monte Carlo haut niveau
+  - publie les events RabbitMQ / Redis / Replay
+
+Rust physics-core
+  - integre les trajectoires 3D
+  - calcule drag, Magnus, Vent, Rebond, filet, bande, let
+  - simule les candidats en batch
+  - retourne des resultats physiques compacts
+```
+
+Le moteur physique ne doit pas etre approfondi dans le modele Java actuel "landing-first". La cible est un `physics-core` Rust appele par le worker Java via une frontiere batch.
 
 Ce moteur doit recevoir une specification de Coup, integrer la trajectoire dans le temps, puis retourner:
 
@@ -54,6 +71,39 @@ Ce moteur doit recevoir une specification de Coup, integrer la trajectoire dans 
 - les informations necessaires au replay.
 
 Le service et les coups d'echange doivent utiliser le meme moteur.
+
+## Frontiere Java -> Rust
+
+La frontiere doit rester physique et batch-first:
+
+```text
+simulate_batch(
+  PhysicsEnvironment environment,
+  ShotSpec[] shotSpecs,
+  long deterministicSeed
+) -> PhysicsSimulationResult[]
+```
+
+Java transforme le domaine jeu en entrees physiques. Rust ne connait pas les Attributs par leur nom, le Score, la Tactique, le Tournoi, la Ligue, le Club ou l'Utilisateur.
+
+Rust peut recevoir:
+
+- `PhysicsEnvironment`: surface, humidite, vent, coefficients de balle/surface/filet;
+- `ShotSpec`: position de contact, vitesse initiale 3D, spin, axe de spin, type de coup physique, seed;
+- un batch de variantes pour l'IA ou le Monte Carlo.
+
+Rust retourne:
+
+- trajectoire et segments;
+- interaction filet/bande/let;
+- rebonds;
+- atterrissage effectif;
+- fenetres physiques utiles au calcul Java du ReachResult;
+- flags physiques (`out`, `netFault`, `serviceLet`, etc.).
+
+Ne pas appeler Rust candidat par candidat quand un lot est disponible. Le cout Java -> Rust doit etre amorti par des batches de ShotSpec.
+
+Python reste reserve a la calibration offline: notebooks, plots, ajustement de coefficients, analyse de distributions. Python ne devient pas le simulateur officiel.
 
 ## Modele physique cible
 
@@ -501,15 +551,18 @@ Regression:
 
 ## Plan d'implementation conseille
 
-1. Ajouter les constantes physiques et un petit type vecteur interne si aucun n'existe.
-2. Extraire la generation de trajectoire dans un service commun.
-3. Ajouter la detection de croisement du filet et `NetInteraction`.
-4. Ajouter la logique bande deterministe avec effet du spin.
-5. Faire passer `TrajectoireService` par le moteur commun.
-6. Ajouter `height_m`, `standing_reach_m`, `body_mass_kg`, `dominant_hand`, `ServeLet`, `Bounce` et `NetInteraction` au proto, puis regenerer les classes.
-7. Refaire `ServeSimulator` pour generer un `ShotSpec` de service.
-8. Ajouter le resultat de let au modele de service / event stream.
-9. Calibrer les constantes avec des tests de distribution et quelques scenarios types.
+1. Ajouter la frontiere contractuelle `PhysicsEnvironment`, `ShotSpec`, `PhysicsSimulationResult` et `simulate_batch`.
+2. Creer le crate Rust `physics-core` avec une API batch pure et deterministe.
+3. Ajouter les constantes physiques et un type vecteur dans Rust.
+4. Implementer l'integration de trajectoire 3D dans Rust.
+5. Ajouter la detection de croisement du filet et `NetInteraction`.
+6. Ajouter la logique bande deterministe avec effet du spin.
+7. Ajouter le Rebond surface/humidite.
+8. Faire passer le worker Java par la frontiere Rust pour la physique, en gardant Java responsable de l'orchestration.
+9. Ajouter `height_m`, `standing_reach_m`, `body_mass_kg`, `dominant_hand`, `ServeLet`, `Bounce` et `NetInteraction` au proto, puis regenerer les classes Java/TypeScript/Rust selon les consommateurs actifs.
+10. Refaire `ServeSimulator` pour generer un `ShotSpec` de service.
+11. Ajouter le resultat de let au modele de service / event stream.
+12. Calibrer les constantes avec des tests de distribution et quelques scenarios types.
 
 ## Points de calibration
 

@@ -30,11 +30,12 @@ A point can end through physical consequences:
 
 HitQuality remains the execution-quality coefficient, but it does **not** trigger a separate `in/out` probability. HitQuality controls the physical noise applied to ShotExecution: launch direction, launch angle, speed, spin, timing, contact point and target dispersion. The Trajectoire then determines whether the Coup is valid.
 
-Physical parameters are tunable via ConfigurationGlobale/MondeSetting; they are not part of the fixed simulator contract (which only fixes the Attribut interface and stable physical inputs, per ADR-0004). Calibration of physical parameters against expected real-world distributions happens through a Python Monte Carlo pipeline post-implementation.
+Physical parameters are tunable via ConfigurationGlobale/MondeSetting; they are not part of the fixed simulator contract (which only fixes the Attribut interface and stable physical inputs, per ADR-0004). Runtime physics for candidate evaluation and Monte Carlo belongs to the Rust `physics-core` behind the Java simulator worker (ADR-0024). Python remains an offline calibration and analysis tool, not the official simulator runtime.
 
 ## Consequences
 
 - The simulator must model court geometry, ball trajectory physics, player movement kinematics, net interaction, bounce physics, and shot execution quality. This is significantly more complex to implement than a probabilistic model.
-- A Python calibration pipeline is required before beta testing to validate that simulated match statistics (ace rate, unforced error rate, rally length distribution, etc.) fall within plausible ranges.
+- A Python calibration pipeline is required before beta testing to validate that simulated match statistics (ace rate, unforced error rate, rally length distribution, etc.) fall within plausible ranges. These experiments calibrate the Java/Rust simulator; they do not replace it.
 - All future simulator versions must maintain the 3D model and physical trajectory termination as the baseline. A version that drops to 2D or reintroduces direct point-outcome probabilities would require a new simulator contract version (per ADR-0006).
 - Physical parameters that do not belong to the fixed Attribut interface (ball speed ranges, spin effects per surface, execution-noise curves, bounce coefficients, net-tape coefficients) must be externalised to ConfigurationGlobale from the start.
+- The physical integration hot path should target Rust rather than deepening the current landing-first Java placeholder.

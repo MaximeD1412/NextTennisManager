@@ -31,7 +31,20 @@ La CourtPosition d'arrivée effective n'est pas tirée directement comme verdict
 Sur les surfaces extérieures (`CLAY`, `GRASS`, `HARD`), le Vent courbe la balle en vol — la déviation latérale croît avec la hauteur (`z`) et la durée de vol. Le simulateur émet la Trajectoire en segments successifs via `BALL_FLIGHT_SEGMENT`, calculés progressivement (pas de pré-calcul de la trajectoire complète à l'impact). Sur `INDOOR_HARD` (sans Vent), un seul `BALL_FLIGHT_SEGMENT` suffit par Coup. Sert de base au calcul de AvailableTime pour l'adversaire.
 
 ### Moteur Physique de Balle
-Le simulateur doit utiliser un moteur commun pour tous les Coups, services inclus. Le moteur reçoit ShotExecution et retourne une Trajectoire intégrée.
+Le simulateur doit utiliser un moteur commun pour tous les Coups, services inclus. L'implémentation cible de ce moteur est un `physics-core` Rust appelé par le worker Java (ADR-0024). Le moteur reçoit ShotExecution et retourne une Trajectoire intégrée.
+
+Le worker Java reste responsable de l'orchestration : Match, Point, Score, Tactique, Attributs, Fatigue, Moral, IA tactique, choix de Coup, publication RabbitMQ/Redis/Replay et classification métier des événements. Le `physics-core` Rust reste responsable de la vérité physique : trajectoire 3D, drag, Magnus, Vent, filet, bande, let de service, Rebond et événements physiques compacts.
+
+La frontière ne doit pas faire fuiter le domaine jeu dans Rust. Rust reçoit des entrées physiques déjà dérivées (`PhysicsEnvironment`, `ShotSpec`, seed déterministe) et retourne des résultats physiques. Il ne connaît pas les noms d'Attributs, le Score, la Tactique, le Tournoi, la Ligue, le Club ou l'Utilisateur.
+
+Les appels Java -> Rust doivent être **batch-first** pour le Monte Carlo et l'IA :
+
+```text
+simulateBatch(environment, shotSpecs[], deterministicSeed)
+  -> physicsResults[]
+```
+
+Ne pas appeler Rust Coup par Coup quand plusieurs candidats peuvent être simulés en lot. Le coût de frontière inter-langage doit être amorti par des batches de candidats ou de variantes Monte Carlo.
 
 État minimal de balle :
 
@@ -52,6 +65,8 @@ Vent sur surfaces extérieures
 ```
 
 Le `ShotEffect` (`FLAT`, `TOPSPIN`, `SLICE`, `LIFT`) est une intention d'effet, pas une force physique suffisante. Il doit être converti en `spinRpm` et `spinAxis`. Le topspin/lift doit permettre une balle lancée plus haut qui redescend plus vite par Magnus ; il ne doit pas être modélisé comme un simple bonus de hauteur.
+
+Déterminisme : Java fournit les seeds sémantiques (`matchId`, Point, Coup, variante Monte Carlo). Rust ne doit pas utiliser d'horloge, d'état aléatoire global, d'itération non déterministe ou de réduction parallèle non stable pour produire un résultat physique. La reproductibilité est garantie pour une même version de simulateur, même version de `physics-core`, même profil de build et même cible d'exécution ; changer l'algorithme physique ou les options bas niveau impose un bump de version simulateur.
 
 ### Filet et Bande
 Le filet est un obstacle géométrique, pas une déduction depuis la CourtPosition d'arrivée.
@@ -130,6 +145,8 @@ Ne pas utiliser "erreur" seul — préciser FAUTE_NON_FORCÉE ou FAUTE_FORCÉE.
 L'interface fixe entre le contexte WebApp et le Simulator, définie dans ADR-0004. Le simulateur reçoit : les Attributs de chaque TennisPlayer (1–99), leurs états dynamiques (Fatigue, Rythme, Moral en 0.0–1.0), leur morphologie physique minimale (`height_m`, `standing_reach_m`, `body_mass_kg`, main dominante), leur Tactique active, la surface du Match, le format (BEST_OF_3 | BEST_OF_5), le VENT_MOYEN du Créneau `(direction: float, intensité: float)`, `surface_wetness_initial: float` (0.0–1.0), `precipitation_active: bool`, et `surface_drying_rate: float` (taux de séchage par Point, calculé par le WebApp depuis la base ConfigurationGlobale modulée par la Protection du terrain du Tournoi) — les quatre derniers nuls/false/0.0 pour `INDOOR_HARD`. Il retourne : le vainqueur, le score complet, les stats du Match, et — si activé — les événements de replay.
 
 Les paramètres physiques internes (vitesse maximale par unité d'Attribut, coefficients de traînée, coefficients Magnus, restitution de Rebond, courbes de bruit d'exécution, coefficients de bande du filet, etc.) sont tunables via ConfigurationGlobale/MondeSetting et ne font **pas** partie du contrat fixe. Ne pas introduire de probabilité de faute indépendante.
+
+Le contrat externe du simulateur reste porté par le worker Java. Le contrat interne Java -> Rust est plus étroit : `PhysicsEnvironment`, batch de `ShotSpec`, seed déterministe, résultats physiques. Un changement de cette frontière interne doit être documenté avec le même niveau de rigueur qu'un changement du `.proto`, car l'IA Monte Carlo et le replay en dépendent.
 
 ### Morphologie du TennisPlayer
 La morphologie n'est pas un Attribut entraînable : elle est générée à la création de la Personne et transmise au Simulator.

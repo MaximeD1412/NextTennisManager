@@ -19,9 +19,9 @@ public class ServeSimulator {
      * This class still decides service in/out with direct probability and a sampled
      * landing point. It must not be used as the target model for future work.
      * The service model documented in NextManagerTennis_Simulator/CONTEXT.md and
-     * TRAJECTOIRE_PHYSIQUE_SPEC.md replaces this with a physical ShotSpec:
-     * contact height from player morphology, initial velocity, spin, net/tape,
-     * bounce and service-box validation.
+     * TRAJECTOIRE_PHYSIQUE_SPEC.md replaces this with physical ShotSpec batches
+     * handled by the Rust physics-core: contact height from player morphology,
+     * initial velocity, spin, net/tape, bounce and service-box validation.
      */
 
     // Legacy simplification. Deuce/ad is relative to server side and should not
