@@ -13,8 +13,19 @@ import java.util.Random;
 
 @Component
 public class ServeSimulator {
+    /*
+     * Legacy placeholder.
+     *
+     * This class still decides service in/out with direct probability and a sampled
+     * landing point. It must not be used as the target model for future work.
+     * The service model documented in NextManagerTennis_Simulator/CONTEXT.md and
+     * TRAJECTOIRE_PHYSIQUE_SPEC.md replaces this with a physical ShotSpec:
+     * contact height from player morphology, initial velocity, spin, net/tape,
+     * bounce and service-box validation.
+     */
 
-    // Service box centres (metres from net centre). x > 0 = deuce side, x < 0 = ad side.
+    // Legacy simplification. Deuce/ad is relative to server side and should not
+    // be treated as a universal x sign in the physical service model.
     private static final float DEUCE_TARGET_X = 2.06f;
     private static final float AD_TARGET_X = -2.06f;
     private static final float TARGET_Y = 3.2f;

@@ -14,6 +14,15 @@ import java.util.Random;
 
 @Service
 public class TrajectoireService {
+    /*
+     * Legacy placeholder.
+     *
+     * This class currently samples a final landing position first and builds one
+     * visual segment from that result. The target simulator model is the opposite:
+     * build a physical ShotExecution, integrate ball flight with drag/Magnus/wind,
+     * detect net/tape/bounce interactions, then derive the landing and fault.
+     * See NextManagerTennis_Simulator/CONTEXT.md and TRAJECTOIRE_PHYSIQUE_SPEC.md.
+     */
 
     // Gaussian sigma (metres) for landing position spread at HitQuality = 0
     static final float BASE_SIGMA = 2.0f;

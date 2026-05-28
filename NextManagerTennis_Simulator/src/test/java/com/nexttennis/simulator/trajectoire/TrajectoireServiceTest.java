@@ -17,6 +17,11 @@ import java.util.stream.IntStream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class TrajectoireServiceTest {
+    /*
+     * Tests for the legacy placeholder trajectory model.
+     * They document current behavior only; future physics work should replace
+     * landing-first assertions with ShotExecution -> integrated Trajectoire tests.
+     */
 
     // ─── HitQuality → variance ───────────────────────────────────────────────
 
