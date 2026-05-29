@@ -366,6 +366,18 @@ message NetInteraction {
   float pass_probability = 6;
 }
 
+// ─── Physics batch transport (Java → Rust sidecar) ───────────────────────────
+
+message PhysicsBatchRequest {
+  PhysicsEnvironment env = 1;
+  repeated ShotSpec shots = 2;
+  uint64 seed = 3;
+}
+
+message PhysicsBatchResponse {
+  repeated PhysicsSimulationResult results = 1;
+}
+
 // ─── Physics contract (Java → Rust boundary) ─────────────────────────────────
 
 message SurfaceCoefficients {
