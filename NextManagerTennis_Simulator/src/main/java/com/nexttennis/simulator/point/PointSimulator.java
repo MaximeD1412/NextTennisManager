@@ -300,6 +300,7 @@ public class PointSimulator {
 
         boolean attackerFirst = attacker.getPlayerId().compareTo(defender.getPlayerId()) <= 0;
         TacticalState attackerTactical = null;
+        TacticalState defenderTactical = null;
 
         for (int t = 0; t < positions.size(); t++) {
             CourtPosition ball = positions.get(t);
@@ -307,21 +308,38 @@ public class PointSimulator {
                     ball, attackerPos, defenderPos, score, weather, t);
             GameTickState defenderState = new GameTickState(
                     ball, defenderPos, attackerPos, score, weather, t);
+
+            // Visible preparation comes from the opponent's last tick — never from TacticalState directly
             ObservableOpponentState attackerSeesOpp = new ObservableOpponentState(
-                    defenderPos, Vector3.getDefaultInstance(), ShotPreparation.NONE);
+                    defenderPos, Vector3.getDefaultInstance(),
+                    defenderTactical != null ? toShotPreparation(defenderTactical.preparedShot()) : ShotPreparation.NONE);
             ObservableOpponentState defenderSeesOpp = new ObservableOpponentState(
-                    attackerPos, Vector3.getDefaultInstance(), ShotPreparation.NONE);
+                    attackerPos, Vector3.getDefaultInstance(),
+                    attackerTactical != null ? toShotPreparation(attackerTactical.preparedShot()) : ShotPreparation.NONE);
 
             if (attackerFirst) {
                 attackerTactical = attackerBrain.tick(attackerState, attackerSeesOpp);
-                defenderBrain.tick(defenderState, defenderSeesOpp);
+                defenderTactical = defenderBrain.tick(defenderState, defenderSeesOpp);
             } else {
-                defenderBrain.tick(defenderState, defenderSeesOpp);
+                defenderTactical = defenderBrain.tick(defenderState, defenderSeesOpp);
                 attackerTactical = attackerBrain.tick(attackerState, attackerSeesOpp);
             }
         }
 
         return attackerTactical;
+    }
+
+    private static ShotPreparation toShotPreparation(ShotType shotType) {
+        return switch (shotType) {
+            case SHOT_TYPE_FOREHAND,
+                 SHOT_TYPE_VOLLEY_FOREHAND,
+                 SHOT_TYPE_DROP_SHOT_FOREHAND -> ShotPreparation.FOREHAND;
+            case SHOT_TYPE_BACKHAND,
+                 SHOT_TYPE_VOLLEY_BACKHAND,
+                 SHOT_TYPE_DROP_SHOT_BACKHAND -> ShotPreparation.BACKHAND;
+            case SHOT_TYPE_SMASH             -> ShotPreparation.SMASH;
+            default                          -> ShotPreparation.NONE;
+        };
     }
 
     /**
