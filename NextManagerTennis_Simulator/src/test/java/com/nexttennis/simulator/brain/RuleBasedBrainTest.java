@@ -175,6 +175,75 @@ class RuleBasedBrainTest {
         assertThat(result.approximateTargetZone().getY()).isNegative();
     }
 
+    // ── Lecture du jeu (opponent reading) ─────────────────────────────────────
+
+    @Test
+    void highLectureDeJeuShiftsCoverageTowardPredictedCrossCourtZone() {
+        // Opponent at x=-3 preparing a FOREHAND → cross-court lands at positive x.
+        // High lecture player should position at higher x than low lecture player.
+        GameTickState state = tickState(ball(-3f, -5f, 1f), self(0f, 10f, 0f));
+        ObservableOpponentState opp = new ObservableOpponentState(
+                pos(-3f, -10f, 0f), Vector3.getDefaultInstance(), ShotPreparation.FOREHAND);
+
+        TacticalState high = brain(playerWith().lectureDeJeu(99)).tick(state, opp);
+        TacticalState low  = brain(playerWith().lectureDeJeu(1)).tick(state, opp);
+
+        assertThat(high.movementTarget().getX()).isGreaterThan(low.movementTarget().getX());
+    }
+
+    @Test
+    void lowLectureDeJeuIsNotInfluencedByVisiblePreparation() {
+        // With lecture=1, both FOREHAND and BACKHAND preparations should yield the same x
+        // (only static opponent position is used, not preparation type).
+        GameTickState state = tickState(ball(0f, -5f, 1f), self(0f, 10f, 0f));
+        CourtPosition oppPos = pos(-2f, -10f, 0f);
+        ObservableOpponentState forehandOpp = new ObservableOpponentState(
+                oppPos, Vector3.getDefaultInstance(), ShotPreparation.FOREHAND);
+        ObservableOpponentState backhandOpp = new ObservableOpponentState(
+                oppPos, Vector3.getDefaultInstance(), ShotPreparation.BACKHAND);
+
+        TacticalState forehand = brain(playerWith().lectureDeJeu(1)).tick(state, forehandOpp);
+        TacticalState backhand = brain(playerWith().lectureDeJeu(1)).tick(state, backhandOpp);
+
+        assertThat(forehand.movementTarget().getX())
+                .isCloseTo(backhand.movementTarget().getX(), offset(0.001f));
+    }
+
+    @Test
+    void highLectureDeJeuIsCloserToActualLandingThanLowLectureDeJeu() {
+        // Opponent at x=-3 with FOREHAND preparation → actual landing at cross-court x≈+2.8.
+        // High lecture player's movementTarget should be closer to that landing than low lecture.
+        GameTickState state = tickState(ball(-3f, -5f, 1f), self(0f, 10f, 0f));
+        ObservableOpponentState opp = new ObservableOpponentState(
+                pos(-3f, -10f, 0f), Vector3.getDefaultInstance(), ShotPreparation.FOREHAND);
+
+        TacticalState high = brain(playerWith().lectureDeJeu(99).placement(50)).tick(state, opp);
+        TacticalState low  = brain(playerWith().lectureDeJeu(1).placement(50)).tick(state, opp);
+
+        float actualLandingX = 2.8f; // expected cross-court landing
+        float distHigh = Math.abs(high.movementTarget().getX() - actualLandingX);
+        float distLow  = Math.abs(low.movementTarget().getX()  - actualLandingX);
+
+        assertThat(distHigh).isLessThan(distLow);
+    }
+
+    @Test
+    void zeroLectureDeJeuPreservesExistingPlacementBehavior() {
+        // When lectureDeJeu=0, the blend weight is 0: movement target must equal the pure bisector
+        // from Placement, unaffected by opponent reading.
+        GameTickState state = tickState(ball(3f, -5f, 1f), self(0f, 10f, 0f));
+        ObservableOpponentState opp = opp(pos(2f, -10f, 0f));
+
+        TacticalState withGameReading    = brain(playerWith().lectureDeJeu(99).placement(50)).tick(state, opp);
+        TacticalState withoutGameReading = brain(playerWith().lectureDeJeu(0).placement(50)).tick(state, opp);
+
+        // Without game reading: bisectorX = 3 * (50/99) * 0.5 ≈ 0.757
+        assertThat(withoutGameReading.movementTarget().getX()).isCloseTo(0.757f, offset(0.02f));
+        // With max game reading: position shifts from bisector toward coverage
+        assertThat(withGameReading.movementTarget().getX())
+                .isNotCloseTo(withoutGameReading.movementTarget().getX(), offset(0.05f));
+    }
+
     // ── Risk level ────────────────────────────────────────────────────────────
 
     @Test
@@ -246,12 +315,14 @@ class RuleBasedBrainTest {
         private int constructionDuPoint = 50;
         private int visionDuCourt = 50;
         private int choixDesCoups = 50;
+        private int lectureDeJeu = 0;
         private PlayerHand hand = PlayerHand.PLAYER_HAND_RIGHT;
         private PlayerTactic tactic = PlayerTactic.PLAYER_TACTIC_ALL_COURT;
 
         PlayerBuilder placement(int v)           { this.placement = v;           return this; }
         PlayerBuilder constructionDuPoint(int v) { this.constructionDuPoint = v; return this; }
         PlayerBuilder visionDuCourt(int v)       { this.visionDuCourt = v;       return this; }
+        PlayerBuilder lectureDeJeu(int v)        { this.lectureDeJeu = v;        return this; }
         PlayerBuilder hand(PlayerHand h)         { this.hand = h;                return this; }
         PlayerBuilder tactic(PlayerTactic t)     { this.tactic = t;              return this; }
 
@@ -261,6 +332,7 @@ class RuleBasedBrainTest {
                     .setConstructionDuPoint(constructionDuPoint)
                     .setVisionDuCourt(visionDuCourt)
                     .setChoixDesCoups(choixDesCoups)
+                    .setLectureDuJeu(lectureDeJeu)
                     .setDominantHand(hand)
                     .setActiveTactic(tactic)
                     .build();

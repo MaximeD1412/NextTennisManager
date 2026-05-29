@@ -10,7 +10,8 @@ import com.nexttennis.simulator.proto.TennisPlayerSnapshot;
 /**
  * Attribute-driven PlayerBrain. Replaces random shot selection with decisions
  * derived from the player's Intelligence de jeu attributes:
- *   - Placement  → movement target (coverage of incoming angle bisector)
+ *   - Placement            → movement target (coverage of incoming angle bisector)
+ *   - Lecture du jeu       → opponent reading (inferred shot candidates + coverage blend)
  *   - Construction du point → target depth (positional pressure)
  *   - Vision du court       → target width (angle creation)
  *   - Choix des coups       → risk calibration
@@ -29,6 +30,14 @@ public class RuleBasedBrain implements PlayerBrain {
     private static final float TARGET_MIN_SIDE   = 0.5f;
     private static final float TARGET_MAX_SIDE   = 3.2f;
 
+    // Typical cross-court and down-line landing x magnitudes
+    private static final float CANDIDATE_CROSS_X = 2.8f;
+    private static final float CANDIDATE_LINE_X  = 2.5f;
+
+    // Lecture du jeu thresholds (as fractions of 99)
+    private static final float LECTURE_THRESHOLD_LOW  = 1.0f / 3.0f; // ~33 — static only below this
+    private static final float LECTURE_THRESHOLD_HIGH = 2.0f / 3.0f; // ~66 — 3 candidates above this
+
     private final TennisPlayerSnapshot player;
 
     public RuleBasedBrain(TennisPlayerSnapshot player) {
@@ -37,7 +46,7 @@ public class RuleBasedBrain implements PlayerBrain {
 
     @Override
     public TacticalState tick(GameTickState state, ObservableOpponentState opponent) {
-        CourtPosition movementTarget = computeMovementTarget(state.selfPosition(), state.ballPosition());
+        CourtPosition movementTarget = computeMovementTarget(state.selfPosition(), state.ballPosition(), opponent);
         ShotType shotType = pickShotType(state.selfPosition(), state.ballPosition());
         ShotIntent shotIntent = tacticToIntent(player.getActiveTactic());
         CourtPosition targetZone = computeTargetZone(opponent.position());
@@ -46,21 +55,78 @@ public class RuleBasedBrain implements PlayerBrain {
     }
 
     /**
-     * Recovery position on own baseline, tracking the incoming ball's x coordinate
-     * proportionally to Placement. High Placement → approaches the angle-bisector;
-     * low Placement → drifts toward center.
+     * Recovery position on own baseline. Placement drives the angle-bisector base; Lecture du jeu
+     * blends in a predicted-coverage correction derived from inferred opponent shot candidates.
      *
-     * Bisector approximation: after hitting, the optimal coverage x ≈ ball.x * 0.5
-     * (splits the two widest angles the opponent can create from ball.x).
+     * Low Lecture du jeu (≤ 1/3): no shot inference — coverage correction uses static opponent x.
+     * Medium (1/3 – 2/3): 2 candidate shots weighted by probability.
+     * High (> 2/3): 3 candidates with sharper probability distribution.
      */
-    private CourtPosition computeMovementTarget(CourtPosition selfPos, CourtPosition ballPos) {
-        float placementFactor = player.getPlacement() / 99.0f;
-        float targetX = ballPos.getX() * placementFactor * 0.5f;
+    private CourtPosition computeMovementTarget(
+            CourtPosition selfPos, CourtPosition ballPos, ObservableOpponentState opponent) {
+
+        float placementFactor   = player.getPlacement()    / 99.0f;
+        float lectureDeJeuFactor = player.getLectureDuJeu() / 99.0f;
+
+        // Angle-bisector base (Placement-driven, unchanged when Lecture du jeu = 0)
+        float bisectorX = ballPos.getX() * placementFactor * 0.5f;
+
+        // Coverage x driven by opponent reading
+        float coverageX = computePredictedCoverageX(opponent, lectureDeJeuFactor);
+
+        // Blend: lectureDeJeuFactor=0 → pure bisector; 1 → pure predicted coverage
+        float targetX = bisectorX + lectureDeJeuFactor * (coverageX - bisectorX);
         targetX = Math.clamp(targetX, -COURT_SAFE_EDGE, COURT_SAFE_EDGE);
+
         float baselineSign = selfPos.getY() >= 0 ? 1.0f : -1.0f;
         return CourtPosition.newBuilder()
                 .setX(targetX).setY(baselineSign * BASELINE_Y).setZ(0)
                 .build();
+    }
+
+    /**
+     * Returns the x coordinate this player should cover based on opponent reading.
+     *
+     * Low Lecture du jeu (≤ LECTURE_THRESHOLD_LOW): static opponent position only.
+     * Medium: 2 candidate shot landing zones, weighted by type-specific probabilities.
+     * High: 3 candidates with sharper distribution.
+     */
+    private float computePredictedCoverageX(ObservableOpponentState opponent, float lectureDeJeuFactor) {
+        float oppX = opponent.position().getX();
+
+        if (lectureDeJeuFactor <= LECTURE_THRESHOLD_LOW) {
+            return oppX;
+        }
+
+        // Cross-court and down-the-line landing x magnitudes (signed away from / toward oppX)
+        float crossX = oppX >= 0 ? -CANDIDATE_CROSS_X :  CANDIDATE_CROSS_X;
+        float lineX  = oppX >= 0 ?  CANDIDATE_LINE_X  : -CANDIDATE_LINE_X;
+
+        boolean highLecture = lectureDeJeuFactor > LECTURE_THRESHOLD_HIGH;
+
+        float crossProb, lineProb, middleProb;
+        switch (opponent.visiblePreparation()) {
+            case FOREHAND -> {
+                crossProb  = highLecture ? 0.65f : 0.60f;
+                lineProb   = highLecture ? 0.25f : 0.40f;
+                middleProb = highLecture ? 0.10f : 0.00f;
+            }
+            case BACKHAND -> {
+                crossProb  = highLecture ? 0.60f : 0.55f;
+                lineProb   = highLecture ? 0.30f : 0.45f;
+                middleProb = highLecture ? 0.10f : 0.00f;
+            }
+            case SMASH -> { return 0f; }
+            default -> { // NONE
+                crossProb  = highLecture ? 0.45f : 0.50f;
+                lineProb   = highLecture ? 0.35f : 0.50f;
+                middleProb = highLecture ? 0.20f : 0.00f;
+            }
+        }
+
+        float weighted = crossX * crossProb + lineX * lineProb;
+        float total    = crossProb + lineProb + middleProb; // middleX = 0, contributes 0 to weighted
+        return weighted / total;
     }
 
     /**
