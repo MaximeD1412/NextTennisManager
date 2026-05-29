@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "npm run build:wasm && next dev --turbopack",
     "dev:ui-only": "next dev --turbopack",
-    "generate:proto": "mkdir -p src/generated && grpc_tools_node_protoc --plugin=protoc-gen-ts_proto=./node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=./src/generated --proto_path=../../shared/proto/src/main/proto ../../shared/proto/src/main/proto/simulator.proto",
+    "generate:proto": "mkdir -p src/generated && grpc_tools_node_protoc --plugin=protoc-gen-ts_proto=./node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=./src/generated --ts_proto_opt=esModuleInterop=true --proto_path=../../shared/proto/src/main/proto ../../shared/proto/src/main/proto/simulator.proto",
     "build": "npm run build:wasm && next build",
     "build:with-proto": "npm run generate:proto && npm run build",
     "build:wasm": "cargo build -p physics-debug-wasm --target wasm32-unknown-unknown --release && node ./scripts/copy-physics-wasm.mjs",
