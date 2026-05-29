@@ -5,6 +5,10 @@ build/generated/
 
 # Generated protobuf stubs (TypeScript)
 NextManagerTennis_WebApp/frontend/src/generated/
+NextManagerTennis_WebApp/frontend/dist/
+NextManagerTennis_WebApp/frontend/.next/
+NextManagerTennis_WebApp/frontend/node_modules/
+NextManagerTennis_WebApp/frontend/public/physics_debug_wasm.wasm
 
 # Generated protobuf stubs (Rust)
 physics-core/src/generated/

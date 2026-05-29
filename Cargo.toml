@@ -1,5 +1,6 @@
 [workspace]
 members = [
     "physics-core",
+    "physics-debug-wasm",
 ]
 resolver = "2"

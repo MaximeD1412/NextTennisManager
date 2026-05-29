@@ -3,21 +3,21 @@ use rand::rngs::SmallRng;
 
 use crate::generated::{
     BallFlightSegment, Bounce, CourtPosition, NetInteraction, NetInteractionKind,
-    PhysicsEnvironment, PhysicsSimulationResult, ServeLet, ShotSpec, Surface,
+    PhysicsEnvironment, PhysicsSimulationResult, ShotSpec, Surface,
     SurfaceCoefficients, Vector3, WindVector,
 };
 
 const GRAVITY: f32 = 9.81;
 const BALL_MASS_KG: f32 = 0.057;
-const BALL_RADIUS_M: f32 = 0.0335;
+pub const BALL_RADIUS_M: f32 = 0.0335;
 const AIR_DENSITY: f32 = 1.204;
 // π × r² = 3.14159 × 0.001122 ≈ 0.003525 m²
 const BALL_AREA_M2: f32 = 0.003525;
-const NET_CENTER_HEIGHT_M: f32 = 0.914;
-const NET_POST_HEIGHT_M: f32 = 1.07;
-const NET_POST_X_M: f32 = 5.029;
-const SERVICE_BOX_DEPTH_M: f32 = 6.40;
-const SINGLES_HALF_WIDTH_M: f32 = 4.115;
+pub const NET_CENTER_HEIGHT_M: f32 = 0.914;
+pub const NET_POST_HEIGHT_M: f32 = 1.07;
+pub const NET_POST_X_M: f32 = 5.029;
+pub const SERVICE_BOX_DEPTH_M: f32 = 6.40;
+pub const SINGLES_HALF_WIDTH_M: f32 = 4.115;
 const DT: f32 = 0.002;
 const MAX_STEPS: usize = 5000;
 // Spin decay fraction applied to horizontal velocity from spin contact
@@ -103,23 +103,26 @@ fn default_coeffs(opt: Option<SurfaceCoefficients>) -> SurfaceCoefficients {
     })
 }
 
-// Deterministic seed derived from shot identity + "netTape" discriminator.
+// FNV-1a hash of match_id + point_index + shot_index + "netTape" discriminator.
+// Including match_id prevents two different matches with the same point/shot
+// indices from producing identical tape outcomes.
 fn tape_rng_seed(spec: &ShotSpec) -> u64 {
-    (spec.point_index as u64)
-        .wrapping_mul(1_000_000)
-        .wrapping_add(spec.shot_index as u64)
-        // XOR with ASCII bytes of "netTape"
-        ^ 0x6e65_7454_6170_6500
-}
-
-fn in_service_box(land: [f32; 3], contact_y: f32) -> bool {
-    let (x, y) = (land[0], land[1]);
-    let in_depth = if contact_y <= 0.0 {
-        y >= 0.0 && y <= SERVICE_BOX_DEPTH_M
-    } else {
-        y >= -SERVICE_BOX_DEPTH_M && y <= 0.0
-    };
-    in_depth && x.abs() <= SINGLES_HALF_WIDTH_M
+    const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+    const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+    let mut h = FNV_OFFSET;
+    for b in spec.match_id.as_bytes() {
+        h ^= *b as u64;
+        h = h.wrapping_mul(FNV_PRIME);
+    }
+    h ^= spec.point_index as u64;
+    h = h.wrapping_mul(FNV_PRIME);
+    h ^= spec.shot_index as u64;
+    h = h.wrapping_mul(FNV_PRIME);
+    for b in b"netTape" {
+        h ^= *b as u64;
+        h = h.wrapping_mul(FNV_PRIME);
+    }
+    h
 }
 
 // Semi-implicit Euler acceleration (drag relative to air, Magnus relative to ball).
@@ -137,7 +140,7 @@ fn accel(
 
     let omega_rad = spin_rpm * std::f32::consts::TAU / 60.0;
     let omega_vec = scale(spin_axis, omega_rad);
-    let a_magnus = scale(cross(omega_vec, vel), c_magnus);
+    let a_magnus = scale(cross(omega_vec, v_rel), c_magnus);
 
     [
         a_drag[0] + a_magnus[0],
@@ -148,7 +151,23 @@ fn accel(
 
 // ── Public API ─────────────────────────────────────────────────────────────
 
+pub fn simulate_batch(
+    env: PhysicsEnvironment,
+    shots: &[ShotSpec],
+    seed: u64,
+) -> Vec<PhysicsSimulationResult> {
+    shots
+        .iter()
+        .enumerate()
+        .map(|(i, spec)| simulate_shot_inner(&env, spec, seed.wrapping_add(i as u64)))
+        .collect()
+}
+
 pub fn simulate_shot(env: &PhysicsEnvironment, spec: &ShotSpec) -> PhysicsSimulationResult {
+    simulate_shot_inner(env, spec, tape_rng_seed(spec))
+}
+
+fn simulate_shot_inner(env: &PhysicsEnvironment, spec: &ShotSpec, tape_seed: u64) -> PhysicsSimulationResult {
     let coeffs = default_coeffs(env.coefficients);
     let is_indoor = env.surface == Surface::IndoorHard as i32;
 
@@ -166,14 +185,11 @@ pub fn simulate_shot(env: &PhysicsEnvironment, spec: &ShotSpec) -> PhysicsSimula
     let mut segments: Vec<BallFlightSegment> = Vec::new();
     let mut net_interaction: Option<NetInteraction> = None;
     let mut bounce_event: Option<Bounce> = None;
-    let mut serve_let: Option<ServeLet> = None;
     let mut cleared_net = false;
     let mut net_checked = false;
-    let mut tape_passed = false;
     let mut landing_position: Option<CourtPosition> = None;
 
     // Segment state
-    let initial_contact_y = pos[1]; // server's side — used for serve-let box check
     let mut seg_start_pos = pos;
     let mut seg_start_vel = vel;
     let mut seg_elapsed = 0.0_f32;
@@ -238,20 +254,40 @@ pub fn simulate_shot(env: &PhysicsEnvironment, spec: &ShotSpec) -> PhysicsSimula
                 // Tape contact — probabilistic, seeded
                 let pp = ((z_net - (net_h - BALL_RADIUS_M)) / (2.0 * BALL_RADIUS_M))
                     .clamp(0.0, 1.0);
-                let passed = SmallRng::seed_from_u64(tape_rng_seed(spec)).gen::<f32>() < pp;
+                let passed = SmallRng::seed_from_u64(tape_seed).gen::<f32>() < pp;
                 if passed {
                     cleared_net = true;
-                    tape_passed = true;
-                    vel = scale(vel, 0.85);
-                    spin_rpm *= 0.70;
+                    let vel_post_tape = scale(vel_net, 0.85);
+                    let spin_post_tape = spin_rpm * 0.70;
+                    // Close the pre-tape segment at the net crossing point.
+                    push_segment(
+                        &mut segments,
+                        seg_start_pos,
+                        [x_net, 0.0, z_net],
+                        seg_start_vel,
+                        vel_net,
+                        spin_rpm,
+                        spin_axis,
+                        (seg_elapsed + DT * t_frac) * 1000.0,
+                        peak_height,
+                    );
                     net_interaction = Some(NetInteraction {
                         kind: NetInteractionKind::NetTapePassed as i32,
                         position: Some(CourtPosition { x: x_net, y: 0.0, z: z_net }),
                         net_height_m: net_h,
-                        velocity_at_net: Some(arr_to_v3(vel_net)),
-                        spin_rpm_at_net: spin_rpm,
+                        velocity_at_net: Some(arr_to_v3(vel_post_tape)),
+                        spin_rpm_at_net: spin_post_tape,
                         pass_probability: pp,
                     });
+                    // Restart integration from net crossing with post-tape state.
+                    pos = [x_net, 0.0, z_net];
+                    vel = vel_post_tape;
+                    spin_rpm = spin_post_tape;
+                    seg_start_pos = pos;
+                    seg_start_vel = vel;
+                    seg_elapsed = 0.0;
+                    peak_height = z_net;
+                    continue 'integration;
                 } else {
                     cleared_net = false;
                     net_interaction = Some(NetInteraction {
@@ -279,9 +315,10 @@ pub fn simulate_shot(env: &PhysicsEnvironment, spec: &ShotSpec) -> PhysicsSimula
         }
 
         // ── Ground contact ────────────────────────────────────────────────
-        if pos[2] > 0.0 && new_pos[2] <= 0.0 {
+        // Threshold at BALL_RADIUS_M (ball centre, consistent with net check).
+        if pos[2] > BALL_RADIUS_M && new_pos[2] <= BALL_RADIUS_M {
             let denom = pos[2] - new_pos[2];
-            let t_frac = if denom.abs() > 1e-8 { pos[2] / denom } else { 1.0 };
+            let t_frac = if denom.abs() > 1e-8 { (pos[2] - BALL_RADIUS_M) / denom } else { 1.0 };
             let land_x = pos[0] + (new_pos[0] - pos[0]) * t_frac;
             let land_y = pos[1] + (new_pos[1] - pos[1]) * t_frac;
             let land = [land_x, land_y, 0.0f32];
@@ -337,27 +374,18 @@ pub fn simulate_shot(env: &PhysicsEnvironment, spec: &ShotSpec) -> PhysicsSimula
 
                 landing_position = Some(arr_to_cp(land));
 
-                if tape_passed && in_service_box(land, initial_contact_y) {
-                    serve_let = Some(ServeLet {
-                        server_id: String::new(),
-                        serve_number: 0,
-                        landing_position: Some(arr_to_cp(land)),
-                        net_interaction: NetInteractionKind::NetTapePassed as i32,
-                    });
-                }
-
                 if is_indoor {
                     break 'integration;
                 }
 
-                // Outdoor: continue post-bounce flight
-                pos = land;
+                // Outdoor: continue post-bounce flight from ball centre above ground.
+                pos = [land_x, land_y, BALL_RADIUS_M];
                 vel = vel_out;
                 spin_rpm = spin_rpm_out;
-                seg_start_pos = land;
+                seg_start_pos = pos;
                 seg_start_vel = vel_out;
                 seg_elapsed = 0.0;
-                peak_height = 0.0;
+                peak_height = BALL_RADIUS_M;
                 continue 'integration;
             } else {
                 // Second landing — close post-bounce segment, done
@@ -393,7 +421,7 @@ pub fn simulate_shot(env: &PhysicsEnvironment, spec: &ShotSpec) -> PhysicsSimula
         ball_flight_segments: segments,
         bounce: bounce_event,
         net_interaction,
-        serve_let,
+        serve_let: None, // serve_let detection is delegated to higher-level logic
         cleared_net,
     }
 }
@@ -578,11 +606,11 @@ mod tests {
 
     #[test]
     fn tape_pass_is_deterministic() {
-        // Put ball in tape zone
+        // Trajectory: y=-3, vy=15, z=1.0, vz=0.5 → z_net ≈ 0.902 (tape zone [0.880, 0.948]).
         let env = indoor_env(0.0, 0.0);
         let spec = ShotSpec {
-            contact_position: Some(CourtPosition { x: 0.0, y: -5.0, z: 1.0 }),
-            velocity: Some(Vector3 { x: 0.0, y: 10.0, z: 0.065 }),
+            contact_position: Some(CourtPosition { x: 0.0, y: -3.0, z: 1.0 }),
+            velocity: Some(Vector3 { x: 0.0, y: 15.0, z: 0.5 }),
             spin_rpm: 0.0,
             spin_axis: Some(Vector3 { x: 0.0, y: 0.0, z: 1.0 }),
             match_id: "test".into(),
@@ -603,16 +631,13 @@ mod tests {
     }
 
     #[test]
-    fn serve_let_emitted_for_tape_pass_in_service_box() {
-        // Force a tape zone scenario that is known to pass (set spin_rpm such that tape
-        // seed for point_index=0,shot_index=0 passes with high probability).
-        // We just check: if serve_let is Some, landing is in service box.
-        // We try a trajectory aimed at tape height and landing in box.
+    fn physics_never_emits_serve_let() {
+        // serve_let detection requires serve metadata (server_id, serve_number, court_side)
+        // not present in ShotSpec — it is delegated to higher-level Java logic.
         let env = indoor_env(0.0, 0.0);
-        // Server at y=-9, hit toward service box (y in [0, 6.4])
         let spec = ShotSpec {
-            contact_position: Some(CourtPosition { x: 0.0, y: -9.0, z: 2.5 }),
-            velocity: Some(Vector3 { x: 0.0, y: 15.0, z: -1.8 }),
+            contact_position: Some(CourtPosition { x: 0.0, y: -3.0, z: 1.0 }),
+            velocity: Some(Vector3 { x: 0.0, y: 15.0, z: 0.5 }),
             spin_rpm: 0.0,
             spin_axis: Some(Vector3 { x: 0.0, y: 0.0, z: 1.0 }),
             match_id: "test".into(),
@@ -620,12 +645,7 @@ mod tests {
             shot_index: 0,
         };
         let result = simulate_shot(&env, &spec);
-        if let Some(sl) = result.serve_let {
-            let land = sl.landing_position.expect("serve_let must have landing_position");
-            assert!(land.y >= 0.0 && land.y <= SERVICE_BOX_DEPTH_M, "serve_let landing in box");
-            assert_eq!(sl.net_interaction, NetInteractionKind::NetTapePassed as i32);
-        }
-        // If no serve_let, the ball didn't hit tape — that's OK, test still passes.
+        assert!(result.serve_let.is_none(), "physics must never populate serve_let");
     }
 
     #[test]
@@ -786,6 +806,85 @@ mod tests {
             lob_deflection,
             flat_deflection
         );
+    }
+
+    #[test]
+    fn simulate_batch_empty_returns_empty() {
+        let env = indoor_env(0.47, 0.10);
+        let results = crate::physics::simulate_batch(env, &[], 0);
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn simulate_batch_order_preserved() {
+        let fast = ShotSpec {
+            contact_position: Some(CourtPosition { x: 0.0, y: -5.0, z: 1.5 }),
+            velocity: Some(Vector3 { x: 0.0, y: 25.0, z: 2.0 }),
+            spin_rpm: 0.0,
+            spin_axis: Some(Vector3 { x: 0.0, y: 0.0, z: 1.0 }),
+            match_id: "t".into(),
+            point_index: 0,
+            shot_index: 0,
+        };
+        let slow = ShotSpec {
+            velocity: Some(Vector3 { x: 0.0, y: 10.0, z: 2.0 }),
+            ..fast.clone()
+        };
+        let shots = vec![fast, slow];
+        let results = crate::physics::simulate_batch(indoor_env(0.47, 0.0), &shots, 1);
+        assert_eq!(results.len(), 2);
+        let y0 = results[0].landing_position.as_ref().unwrap().y;
+        let y1 = results[1].landing_position.as_ref().unwrap().y;
+        assert!(y0 > y1, "fast shot should land deeper than slow: {} vs {}", y0, y1);
+    }
+
+    #[test]
+    fn simulate_batch_deterministic() {
+        let env = || indoor_env(0.47, 0.10);
+        let shots: Vec<ShotSpec> = (0..3)
+            .map(|i| ShotSpec {
+                contact_position: Some(CourtPosition { x: 0.0, y: -5.0, z: 1.5 }),
+                velocity: Some(Vector3 { x: 0.0, y: 15.0 + i as f32, z: 2.0 }),
+                spin_rpm: 0.0,
+                spin_axis: Some(Vector3 { x: 0.0, y: 0.0, z: 1.0 }),
+                match_id: "t".into(),
+                point_index: i,
+                shot_index: i,
+            })
+            .collect();
+
+        let r1 = crate::physics::simulate_batch(env(), &shots, 42);
+        let r2 = crate::physics::simulate_batch(env(), &shots, 42);
+
+        assert_eq!(r1.len(), r2.len());
+        for (a, b) in r1.iter().zip(r2.iter()) {
+            assert_eq!(
+                a.landing_position.as_ref().map(|p| (p.x, p.y)),
+                b.landing_position.as_ref().map(|p| (p.x, p.y)),
+            );
+        }
+    }
+
+    #[test]
+    fn simulate_batch_different_seeds_produce_different_sequences() {
+        // Trajectory chosen so z_net ≈ 0.902, inside the tape zone [0.880, 0.948].
+        // Semi-implicit Euler at DT=0.002: net crossing at step 100 (t=0.2s),
+        // z_net ≈ 1.0 + Σ(vz_k·DT) ≈ 0.902, pp ≈ 0.32.
+        // With 100 shots (tape_seeds 0..99), P(all outcomes identical) < 10^-17.
+        let spec = ShotSpec {
+            contact_position: Some(CourtPosition { x: 0.0, y: -3.0, z: 1.0 }),
+            velocity: Some(Vector3 { x: 0.0, y: 15.0, z: 0.5 }),
+            spin_rpm: 0.0,
+            spin_axis: Some(Vector3 { x: 0.0, y: 0.0, z: 1.0 }),
+            match_id: "t".into(),
+            point_index: 0,
+            shot_index: 0,
+        };
+        let shots: Vec<ShotSpec> = (0..100).map(|_| spec.clone()).collect();
+        let results = crate::physics::simulate_batch(indoor_env(0.0, 0.0), &shots, 0);
+        let cleared: Vec<bool> = results.iter().map(|r| r.cleared_net).collect();
+        let all_same = cleared.windows(2).all(|w| w[0] == w[1]);
+        assert!(!all_same, "all per-shot seeds produced identical tape outcomes — seeds are not varying");
     }
 
     #[test]

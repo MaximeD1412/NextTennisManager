@@ -3,12 +3,33 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "generate:proto": "grpc_tools_node_protoc --plugin=protoc-gen-ts_proto=./node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=./src/generated --proto_path=../../shared/proto ../../shared/proto/simulator.proto",
-    "prebuild": "npm run generate:proto",
-    "build": "echo \"build placeholder\""
+    "dev": "npm run build:wasm && next dev --turbopack",
+    "dev:ui-only": "next dev --turbopack",
+    "generate:proto": "mkdir -p src/generated && grpc_tools_node_protoc --plugin=protoc-gen-ts_proto=./node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=./src/generated --ts_proto_opt=esModuleInterop=true --proto_path=../../shared/proto/src/main/proto ../../shared/proto/src/main/proto/simulator.proto",
+    "build": "npm run build:wasm && next build",
+    "build:with-proto": "npm run generate:proto && npm run build",
+    "build:wasm": "cargo build -p physics-debug-wasm --target wasm32-unknown-unknown --release && node ./scripts/copy-physics-wasm.mjs",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "three": "^0.165.0"
   },
   "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.165.0",
+    "eslint": "^9.0.0",
+    "vitest": "^2.0.0",
+    "eslint-config-next": "^15.0.0",
     "grpc-tools": "^1.12.4",
-    "ts-proto": "^1.170.0"
+    "ts-proto": "^1.170.0",
+    "typescript": "^5.4.5"
   }
 }
