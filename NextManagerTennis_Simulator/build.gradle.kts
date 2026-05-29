@@ -24,4 +24,5 @@ tasks.withType<JavaCompile> {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    systemProperty("physics.core.binary.path", "${rootProject.projectDir}/target/debug/sidecar")
 }
