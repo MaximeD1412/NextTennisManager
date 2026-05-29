@@ -9,15 +9,15 @@ use crate::generated::{
 
 const GRAVITY: f32 = 9.81;
 const BALL_MASS_KG: f32 = 0.057;
-const BALL_RADIUS_M: f32 = 0.0335;
+pub const BALL_RADIUS_M: f32 = 0.0335;
 const AIR_DENSITY: f32 = 1.204;
 // π × r² = 3.14159 × 0.001122 ≈ 0.003525 m²
 const BALL_AREA_M2: f32 = 0.003525;
-const NET_CENTER_HEIGHT_M: f32 = 0.914;
-const NET_POST_HEIGHT_M: f32 = 1.07;
-const NET_POST_X_M: f32 = 5.029;
-const SERVICE_BOX_DEPTH_M: f32 = 6.40;
-const SINGLES_HALF_WIDTH_M: f32 = 4.115;
+pub const NET_CENTER_HEIGHT_M: f32 = 0.914;
+pub const NET_POST_HEIGHT_M: f32 = 1.07;
+pub const NET_POST_X_M: f32 = 5.029;
+pub const SERVICE_BOX_DEPTH_M: f32 = 6.40;
+pub const SINGLES_HALF_WIDTH_M: f32 = 4.115;
 const DT: f32 = 0.002;
 const MAX_STEPS: usize = 5000;
 // Spin decay fraction applied to horizontal velocity from spin contact

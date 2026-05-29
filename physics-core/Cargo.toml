@@ -5,8 +5,10 @@ edition = "2021"
 
 [dependencies]
 prost = "0.13"
+rand = { version = "0.8", default-features = false, features = ["small_rng"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tonic = "0.12"
-rand = { version = "0.8", features = ["small_rng"] }
 
 [build-dependencies]
 prost-build = "0.13"

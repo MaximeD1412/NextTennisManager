@@ -1,0 +1,10 @@
+[package]
+name = "physics-debug-wasm"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+physics-core = { path = "../physics-core" }
