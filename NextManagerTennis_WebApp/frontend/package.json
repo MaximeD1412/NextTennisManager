@@ -9,7 +9,9 @@
     "build": "npm run build:wasm && next build",
     "build:with-proto": "npm run generate:proto && npm run build",
     "build:wasm": "cargo build -p physics-debug-wasm --target wasm32-unknown-unknown --release && node ./scripts/copy-physics-wasm.mjs",
-    "start": "next start"
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit"
   },
   "dependencies": {
     "next": "^15.0.0",
@@ -22,6 +24,8 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/three": "^0.165.0",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^15.0.0",
     "grpc-tools": "^1.12.4",
     "ts-proto": "^1.170.0",
     "typescript": "^5.4.5"

@@ -60,7 +60,7 @@ export default function LiveCanvas() {
   const metricSpeedRef = useRef<HTMLElement>(null);
   const metricSourceRef = useRef<HTMLElement>(null);
   const metricPositionRef = useRef<HTMLElement>(null);
-  const shotNameRef = useRef<HTMLElement>(null);
+  const shotNameRef = useRef<HTMLParagraphElement>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -86,7 +86,7 @@ export default function LiveCanvas() {
     let onResize: (() => void) | undefined;
     let cancelled = false;
 
-    async function startReplay() {
+    const startReplay = async () => {
       metricTime.textContent = "Chargement";
       const trajectory = await loadTrajectory(20);
 
@@ -171,12 +171,12 @@ export default function LiveCanvas() {
       const clock = new THREE.Clock();
       const spinAxis = new THREE.Vector3();
 
-      function setPlaying(value: boolean) {
+      const setPlaying = (value: boolean) => {
         isPlaying = value;
         playToggle.textContent = isPlaying ? "Pause" : "Lecture";
-      }
+      };
 
-      function updateReplay(timeMs: number) {
+      const updateReplay = (timeMs: number) => {
         const sample = sampleAt(trajectory.samples, timeMs);
         ballGroup.position.copy(toScenePosition(sample.position));
 
@@ -192,13 +192,13 @@ export default function LiveCanvas() {
         metricSpeed.textContent = `${playbackSpeed.toFixed(2)}x`;
         metricPosition.textContent = `x ${sample.position.x.toFixed(2)} / y ${sample.position.y.toFixed(2)} / z ${sample.position.z.toFixed(2)}`;
         timelineSlider.value = String(Math.round(timeMs));
-      }
+      };
 
-      function resetReplay() {
+      const resetReplay = () => {
         playbackMs = 0;
         setPlaying(true);
         updateReplay(0);
-      }
+      };
 
       playToggle.addEventListener("click", () => setPlaying(!isPlaying));
       resetButton.addEventListener("click", resetReplay);
@@ -244,7 +244,7 @@ export default function LiveCanvas() {
 
       resetReplay();
       tick();
-    }
+    };
 
     startReplay().catch((error) => {
       console.error(error);
