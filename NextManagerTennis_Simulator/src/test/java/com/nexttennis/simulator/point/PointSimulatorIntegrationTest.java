@@ -1,5 +1,6 @@
 package com.nexttennis.simulator.point;
 
+import com.nexttennis.simulator.brain.StubBrain;
 import com.nexttennis.simulator.hit.HitQualityService;
 import com.nexttennis.simulator.hit.PointContext;
 import com.nexttennis.simulator.movement.PlayerMovementService;
@@ -197,7 +198,9 @@ class PointSimulatorIntegrationTest {
                 PointContext.neutral(),
                 0,
                 0.0f, 0.0f,
-                ventMoyen, surfaceDryingRate, precipitationActive);
+                ventMoyen, surfaceDryingRate, precipitationActive,
+                new StubBrain(server, new Random(42)),
+                new StubBrain(receiver, new Random(42)));
     }
 
     private static SurfaceCoefficients indoorCoefficients() {
