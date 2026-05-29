@@ -350,6 +350,9 @@ The WebApp dispatches to the Java simulator worker only. The worker may use an i
 ### Live (Simulation Live)
 A Match simulation followed in real time by a User. The User can change Tactics mid-match. Events are streamed via WebSocket. The source of truth for live state is Redis. On reconnection, the full event history is replayed from Redis — the client reconstructs the current match state before resuming the real-time stream. The Match continues without interruption regardless of client connection state.
 
+### Visualiseur Live
+The in-app screen through which a User watches a Live Match in real time. Displays the 3D court and ball trajectory. Provides Tactique controls so the User can intervene during the Match. The Visualiseur Live consumes the WebSocket event stream produced by the simulator and reconstructs court state client-side. Do not use "vue Live", "écran de match", or "3D viewer" — use "Visualiseur Live".
+
 ### Batch (Simulation Batch)
 A Match simulation that runs in the background without real-time display. Used for unattended matches and mass simulation (e.g. simulating an entire Tournament round). No WebSocket, minimal storage.
 
