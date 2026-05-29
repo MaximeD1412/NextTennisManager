@@ -6,4 +6,3 @@
 | 17 | Intra-match fatigue accumulator | https://github.com/MaximeD1412/NextTennisManager/issues/17 | — |
 | 19 | Full match simulation service | https://github.com/MaximeD1412/NextTennisManager/issues/19 | #16, #17 |
 | 20 | Spring Boot RabbitMQ worker — simulator job listener | https://github.com/MaximeD1412/NextTennisManager/issues/20 | #19 |
-| 44 | RuleBasedBrain — opponent reading via ObservableOpponentState | https://github.com/MaximeD1412/NextTennisManager/issues/44 | — |
