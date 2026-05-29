@@ -242,6 +242,32 @@ Le mouvement d'un joueur vers sa CourtPosition de base après avoir frappé un C
 
 Lorsqu'un glissement se produit, l'événement `PLAYER_MOVE` porte `slipped: true`. Le joueur se retrouve dans une CourtPosition dégradée : le calcul du RequiredTime pour le **Coup suivant dans l'Échange en cours** part d'une position très défavorable, résultant typiquement en un ReachResult `STRETCHED` ou `DESPERATE`. Le glissement est un déclencheur de Blessure additionnel, indépendant de la Fatigue — probabilité configurable par surface dans ConfigurationGlobale, distincte de la probabilité Fatigue.
 
+### PlayerBrain
+L'interface Java représentant l'intelligence tactique d'un joueur pendant un Point. Appelée à chaque SimulationTick par le simulateur. Maintient un état interne propre au joueur. Reçoit un `GameTickState` (position de balle interpolée, positions joueurs, score, météo) et un `ObservableOpponentState`. Produit une `TacticalState` mise à jour à chaque tick.
+
+`PlayerBrain` est pluggable — le simulateur n'interagit qu'avec l'interface. La première implémentation est `RuleBasedBrain` (logique déterministe basée sur les Attributs du joueur). Une `NeuralBrain` peut la remplacer sans toucher au simulateur.
+
+Ne pas confondre avec la Tactique (style de jeu déclaré du TennisPlayer) : la Tactique est une entrée du PlayerBrain, pas le PlayerBrain lui-même.
+
+### SimulationTick
+L'unité de temps discrète de la simulation d'un Point. À chaque tick, le simulateur :
+1. Interpole la position de la balle depuis la Trajectoire Rust pré-calculée pour le Coup en cours.
+2. Met à jour les positions joueurs selon leur TacticalState courante.
+3. Appelle chaque PlayerBrain avec l'état courant du terrain.
+4. Détecte le tick de contact balle-raquette et lit la TacticalState pour construire le ShotSpec.
+
+La physique (Rust sidecar) reste batch : la Trajectoire complète est calculée en un seul appel à l'issue de chaque Coup, puis interpolée tick par tick. Le tick n'entraîne pas de nouvel appel Rust.
+
+### TacticalState
+L'état tactique courant d'un joueur, maintenu en continu par son PlayerBrain et mis à jour à chaque SimulationTick. Contient la CourtPosition cible de déplacement courant, le type de Coup préparé, le ShotIntent courant, la zone cible approximative du prochain Coup, et le niveau de risque choisi.
+
+Au tick de contact balle-raquette, le simulateur lit la `TacticalState` courante du joueur frappeur pour construire le `ShotSpec` soumis au moteur physique. La décision de Coup est donc prise progressivement pendant le vol de la balle, pas au moment du contact.
+
+### ObservableOpponentState
+Ce qu'un PlayerBrain peut percevoir de son adversaire à un tick donné : CourtPosition courante, vecteur vélocité, et préparation de Coup visible (forehand / backhand / smash / aucune). La TacticalState adverse n'est pas accessible.
+
+L'attribut `Lecture du jeu` module la capacité du brain à inférer les Coups probables adverses depuis cet état observable : une valeur élevée permet de générer plus de coups adverses possibles avec des probabilités associées, et d'optimiser la CourtPosition de couverture en conséquence.
+
 ## Mapping Attributs → Rôle physique
 
 Tableau de référence pour l'implémentation. Chaque Attribut est mappé à son effet dans le modèle physique.
