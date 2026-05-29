@@ -9,5 +9,6 @@ public record TacticalState(
         ShotType preparedShot,
         ShotIntent shotIntent,
         CourtPosition approximateTargetZone,
-        float riskLevel
+        float riskLevel,
+        boolean approachingNet
 ) {}
