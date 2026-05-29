@@ -196,6 +196,137 @@ class RuleBasedBrainTest {
         }
     }
 
+    // ── Net approach ─────────────────────────────────────────────────────────
+
+    @Test
+    void netRusherWithHighNetAttributesApproachesNetWhenBallIsOnPlayerSide() {
+        // Ball on player's side (same y sign as self) → contact tick, should trigger approach
+        GameTickState state = tickState(ball(0f, 8f, 1f), self(0f, 10f, 0f));
+        ObservableOpponentState opp = opp(pos(0f, -10f, 0f));
+
+        TacticalState result = brain(playerWith()
+                .tactic(PlayerTactic.PLAYER_TACTIC_NET_RUSHER)
+                .couvertureDuFilet(80)
+                .voleeCoupDroit(70)
+                .voleeRevers(70))
+                .tick(state, opp);
+
+        assertThat(result.approachingNet()).isTrue();
+        assertThat(Math.abs(result.movementTarget().getY())).isLessThan(4.0f);
+    }
+
+    @Test
+    void defensiveTacticNeverApproachesNet() {
+        GameTickState state = tickState(ball(0f, 8f, 1f), self(0f, 10f, 0f));
+        ObservableOpponentState opp = opp(pos(0f, -10f, 0f));
+
+        TacticalState result = brain(playerWith()
+                .tactic(PlayerTactic.PLAYER_TACTIC_DEFENSIVE)
+                .couvertureDuFilet(99)
+                .voleeCoupDroit(99)
+                .voleeRevers(99))
+                .tick(state, opp);
+
+        assertThat(result.approachingNet()).isFalse();
+        assertThat(Math.abs(result.movementTarget().getY()))
+                .isGreaterThan(10.0f); // stays at baseline
+    }
+
+    @Test
+    void lowNetAttributesPreventsApproachEvenForNetRusher() {
+        GameTickState state = tickState(ball(0f, 8f, 1f), self(0f, 10f, 0f));
+        ObservableOpponentState opp = opp(pos(0f, -10f, 0f));
+
+        TacticalState result = brain(playerWith()
+                .tactic(PlayerTactic.PLAYER_TACTIC_NET_RUSHER)
+                .couvertureDuFilet(30)
+                .voleeCoupDroit(20)
+                .voleeRevers(20))
+                .tick(state, opp);
+
+        assertThat(result.approachingNet()).isFalse();
+    }
+
+    @Test
+    void netApproachCancelledWhenLobDetected() {
+        RuleBasedBrain brain = brain(playerWith()
+                .tactic(PlayerTactic.PLAYER_TACTIC_NET_RUSHER)
+                .couvertureDuFilet(80)
+                .voleeCoupDroit(70)
+                .voleeRevers(70));
+        ObservableOpponentState opp = opp(pos(0f, -10f, 0f));
+
+        // First tick: ball on player side → approach triggered
+        brain.tick(tickState(ball(0f, 8f, 1f), self(0f, 10f, 0f)), opp);
+
+        // Second tick: ball is high (lob incoming)
+        TacticalState result = brain.tick(tickState(ball(0f, -5f, 3.0f), self(0f, 3f, 0f)), opp);
+
+        assertThat(result.approachingNet()).isFalse();
+    }
+
+    @Test
+    void netApproachCancelledOnOpponentSmashPreparation() {
+        RuleBasedBrain brain = brain(playerWith()
+                .tactic(PlayerTactic.PLAYER_TACTIC_NET_RUSHER)
+                .couvertureDuFilet(80)
+                .voleeCoupDroit(70)
+                .voleeRevers(70));
+
+        // First tick: approach triggered
+        brain.tick(tickState(ball(0f, 8f, 1f), self(0f, 10f, 0f)), opp(pos(0f, -10f, 0f)));
+
+        // Second tick: opponent preparing smash
+        ObservableOpponentState smashOpp = new ObservableOpponentState(
+                pos(0f, -5f, 0f), Vector3.getDefaultInstance(), ShotPreparation.SMASH);
+        TacticalState result = brain.tick(tickState(ball(0f, -3f, 1f), self(0f, 2f, 0f)), smashOpp);
+
+        assertThat(result.approachingNet()).isFalse();
+    }
+
+    @Test
+    void highCouverturePositionsCloserToNetThanLowCouverture() {
+        GameTickState state = tickState(ball(0f, 8f, 1f), self(0f, 10f, 0f));
+        ObservableOpponentState opp = opp(pos(0f, -10f, 0f));
+
+        TacticalState highResult = brain(playerWith()
+                .tactic(PlayerTactic.PLAYER_TACTIC_NET_RUSHER)
+                .couvertureDuFilet(95)
+                .voleeCoupDroit(80)
+                .voleeRevers(80))
+                .tick(state, opp);
+
+        TacticalState lowResult = brain(playerWith()
+                .tactic(PlayerTactic.PLAYER_TACTIC_NET_RUSHER)
+                .couvertureDuFilet(60)
+                .voleeCoupDroit(60)
+                .voleeRevers(60))
+                .tick(state, opp);
+
+        // Both approach net, but high couverture is closer (smaller y)
+        assertThat(highResult.approachingNet()).isTrue();
+        assertThat(lowResult.approachingNet()).isTrue();
+        assertThat(highResult.movementTarget().getY())
+                .isLessThan(lowResult.movementTarget().getY());
+    }
+
+    @Test
+    void netPositionXCoversOpponentAngleBisector() {
+        // Opponent at x=4, high couverture → player should cover the bisector (positive x)
+        GameTickState state = tickState(ball(0f, 8f, 1f), self(0f, 10f, 0f));
+        ObservableOpponentState opp = opp(pos(4f, -10f, 0f));
+
+        TacticalState result = brain(playerWith()
+                .tactic(PlayerTactic.PLAYER_TACTIC_NET_RUSHER)
+                .couvertureDuFilet(90)
+                .voleeCoupDroit(80)
+                .voleeRevers(80))
+                .tick(state, opp);
+
+        assertThat(result.approachingNet()).isTrue();
+        assertThat(result.movementTarget().getX()).isGreaterThan(0f);
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
 
     private static RuleBasedBrain brain(PlayerBuilder pb) {
@@ -246,12 +377,18 @@ class RuleBasedBrainTest {
         private int constructionDuPoint = 50;
         private int visionDuCourt = 50;
         private int choixDesCoups = 50;
+        private int couvertureDuFilet = 50;
+        private int voleeCoupDroit = 50;
+        private int voleeRevers = 50;
         private PlayerHand hand = PlayerHand.PLAYER_HAND_RIGHT;
         private PlayerTactic tactic = PlayerTactic.PLAYER_TACTIC_ALL_COURT;
 
         PlayerBuilder placement(int v)           { this.placement = v;           return this; }
         PlayerBuilder constructionDuPoint(int v) { this.constructionDuPoint = v; return this; }
         PlayerBuilder visionDuCourt(int v)       { this.visionDuCourt = v;       return this; }
+        PlayerBuilder couvertureDuFilet(int v)   { this.couvertureDuFilet = v;   return this; }
+        PlayerBuilder voleeCoupDroit(int v)      { this.voleeCoupDroit = v;      return this; }
+        PlayerBuilder voleeRevers(int v)         { this.voleeRevers = v;         return this; }
         PlayerBuilder hand(PlayerHand h)         { this.hand = h;                return this; }
         PlayerBuilder tactic(PlayerTactic t)     { this.tactic = t;              return this; }
 
@@ -261,6 +398,9 @@ class RuleBasedBrainTest {
                     .setConstructionDuPoint(constructionDuPoint)
                     .setVisionDuCourt(visionDuCourt)
                     .setChoixDesCoups(choixDesCoups)
+                    .setCouvertureDuFilet(couvertureDuFilet)
+                    .setVoleeCoupDroit(voleeCoupDroit)
+                    .setVoleeRevers(voleeRevers)
                     .setDominantHand(hand)
                     .setActiveTactic(tactic)
                     .build();

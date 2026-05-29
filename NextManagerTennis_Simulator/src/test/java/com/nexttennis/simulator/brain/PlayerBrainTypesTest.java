@@ -92,7 +92,8 @@ class PlayerBrainTypesTest {
                 ShotType.SHOT_TYPE_FOREHAND,
                 ShotIntent.SHOT_INTENT_AGGRESSIVE,
                 targetZone,
-                0.8f);
+                0.8f,
+                false);
 
         assertThat(tactical.movementTarget()).isEqualTo(movementTarget);
         assertThat(tactical.preparedShot()).isEqualTo(ShotType.SHOT_TYPE_FOREHAND);
@@ -105,10 +106,10 @@ class PlayerBrainTypesTest {
     void tacticalStateRiskLevelBoundsAreRespectedByCallers() {
         TacticalState low = new TacticalState(
                 pos(0f, 0f, 0f), ShotType.SHOT_TYPE_BACKHAND,
-                ShotIntent.SHOT_INTENT_DEFENSIVE, pos(0f, 0f, 0f), 0.0f);
+                ShotIntent.SHOT_INTENT_DEFENSIVE, pos(0f, 0f, 0f), 0.0f, false);
         TacticalState high = new TacticalState(
                 pos(0f, 0f, 0f), ShotType.SHOT_TYPE_BACKHAND,
-                ShotIntent.SHOT_INTENT_DEFENSIVE, pos(0f, 0f, 0f), 1.0f);
+                ShotIntent.SHOT_INTENT_DEFENSIVE, pos(0f, 0f, 0f), 1.0f, false);
 
         assertThat(low.riskLevel()).isEqualTo(0.0f);
         assertThat(high.riskLevel()).isEqualTo(1.0f);
@@ -123,7 +124,8 @@ class PlayerBrainTypesTest {
                 ShotType.SHOT_TYPE_FOREHAND,
                 ShotIntent.SHOT_INTENT_NEUTRAL,
                 pos(1f, -8f, 0f),
-                0.5f);
+                0.5f,
+                false);
 
         PlayerBrain brain = (state, opponent) -> expected;
 

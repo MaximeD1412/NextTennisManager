@@ -31,7 +31,8 @@ public class StubBrain implements PlayerBrain {
                 pickShotType(state.selfPosition()),
                 ShotIntent.SHOT_INTENT_NEUTRAL,
                 pickTarget(opponent.position()),
-                0.5f);
+                0.5f,
+                false);
     }
 
     private ShotType pickShotType(CourtPosition playerPos) {
