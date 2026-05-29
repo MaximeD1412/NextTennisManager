@@ -1,16 +1,22 @@
 package com.nexttennis.simulator.point;
 
+import com.nexttennis.simulator.brain.GameTickState;
+import com.nexttennis.simulator.brain.ObservableOpponentState;
+import com.nexttennis.simulator.brain.PlayerBrain;
+import com.nexttennis.simulator.brain.ShotPreparation;
+import com.nexttennis.simulator.brain.TacticalState;
+import com.nexttennis.simulator.brain.WeatherSnapshot;
 import com.nexttennis.simulator.hit.HitQualityResult;
 import com.nexttennis.simulator.hit.HitQualityService;
 import com.nexttennis.simulator.physics.PhysicsCoreClient;
 import com.nexttennis.simulator.physics.PhysicsResultInterpreter;
 import com.nexttennis.simulator.physics.ShotSpecBuilder;
+import com.nexttennis.simulator.proto.BallFlightSegment;
 import com.nexttennis.simulator.proto.CourtPosition;
 import com.nexttennis.simulator.proto.CourtSide;
 import com.nexttennis.simulator.proto.IssueDuPoint;
 import com.nexttennis.simulator.proto.PhysicsEnvironment;
 import com.nexttennis.simulator.proto.PhysicsSimulationResult;
-import com.nexttennis.simulator.proto.PlayerHand;
 import com.nexttennis.simulator.proto.PointEnd;
 import com.nexttennis.simulator.proto.ReachResult;
 import com.nexttennis.simulator.proto.ScoreSnapshot;
@@ -19,6 +25,7 @@ import com.nexttennis.simulator.proto.ShotIntent;
 import com.nexttennis.simulator.proto.ShotSpec;
 import com.nexttennis.simulator.proto.ShotType;
 import com.nexttennis.simulator.proto.TennisPlayerSnapshot;
+import com.nexttennis.simulator.proto.Vector3;
 import com.nexttennis.simulator.proto.WindVector;
 import org.springframework.stereotype.Component;
 
@@ -162,7 +169,8 @@ public class PointSimulator {
                     input.receiver(), input.server(),
                     receiverAtBall, input.serverPosition(),
                     input.receiverFatigue(), input.serverFatigue(),
-                    serveInterp.reachResult(), 1);
+                    serveInterp.reachResult(), 1,
+                    servePhysics, input.receiverBrain(), input.serverBrain());
         }
 
         // Unreachable: the for-loop always returns on serveNumber == 2
@@ -184,16 +192,29 @@ public class PointSimulator {
             float attackerFatigue,
             float defenderFatigue,
             ReachResult currentReach,
-            int rallyLength) throws IOException {
+            int rallyLength,
+            PhysicsSimulationResult incomingResult,
+            PlayerBrain attackerBrain,
+            PlayerBrain defenderBrain) throws IOException {
+
+        WeatherSnapshot weatherSnapshot = new WeatherSnapshot(
+                evolvedWeather.wind().getDirection(),
+                evolvedWeather.wind().getIntensity(),
+                evolvedWeather.surfaceWetness());
 
         for (int i = 0; i < MAX_RALLY_SHOTS; i++) {
-            ShotType shotType = pickShotType(attacker, attackerPos);
+            TacticalState attackerContact = tickThroughFlight(
+                    incomingResult, attacker, defender, attackerPos, defenderPos,
+                    attackerBrain, defenderBrain,
+                    input.pointStart().getScore(), weatherSnapshot);
+
+            ShotType shotType = attackerContact.preparedShot();
+            CourtPosition target = attackerContact.approximateTargetZone();
 
             HitQualityResult hq = hitQualityService.compute(
                     currentReach, attackerFatigue, attacker, shotType, input.pointContext());
 
             ShotEffect shotEffect = pickShotEffect(hq.effectiveShotIntent());
-            CourtPosition target = pickTarget(defenderPos);
 
             ShotSpec spec = shotSpecBuilder.build(
                     hq, attacker, attackerPos, shotType, shotEffect,
@@ -227,6 +248,8 @@ public class PointSimulator {
             TennisPlayerSnapshot nextDefender = attacker;
             float nextAttackerFatigue = defenderFatigue;
             float nextDefenderFatigue = attackerFatigue;
+            PlayerBrain nextAttackerBrain = defenderBrain;
+            PlayerBrain nextDefenderBrain = attackerBrain;
 
             attacker = nextAttacker;
             defender = nextDefender;
@@ -234,7 +257,10 @@ public class PointSimulator {
             defenderPos = nextDefenderPos;
             attackerFatigue = nextAttackerFatigue;
             defenderFatigue = nextDefenderFatigue;
+            attackerBrain = nextAttackerBrain;
+            defenderBrain = nextDefenderBrain;
             currentReach = interp.reachResult();
+            incomingResult = physResult;
         }
 
         // Safety fallback: max rally length exceeded
@@ -242,6 +268,60 @@ public class PointSimulator {
                 IssueDuPoint.ISSUE_DU_POINT_COUP_GAGNANT,
                 attacker.getPlayerId(),
                 input.pointStart().getScore(), MAX_RALLY_SHOTS), evolvedWeather);
+    }
+
+    /**
+     * Advances tick-by-tick through the incoming ball's flight segments, calling both brains
+     * each tick. Returns the attacker's TacticalState at the contact (last) tick, which is
+     * used to construct the next ShotSpec.
+     *
+     * Brains are called in fixed lexicographic order by playerId each tick for determinism.
+     */
+    private TacticalState tickThroughFlight(
+            PhysicsSimulationResult incomingResult,
+            TennisPlayerSnapshot attacker,
+            TennisPlayerSnapshot defender,
+            CourtPosition attackerPos,
+            CourtPosition defenderPos,
+            PlayerBrain attackerBrain,
+            PlayerBrain defenderBrain,
+            ScoreSnapshot score,
+            WeatherSnapshot weather) {
+
+        List<BallFlightSegment> segments = incomingResult.getBallFlightSegmentsList();
+        List<CourtPosition> positions;
+        if (segments.isEmpty()) {
+            CourtPosition fallback = incomingResult.hasLandingPosition()
+                    ? incomingResult.getLandingPosition() : attackerPos;
+            positions = List.of(fallback);
+        } else {
+            positions = segments.stream().map(BallFlightSegment::getTo).toList();
+        }
+
+        boolean attackerFirst = attacker.getPlayerId().compareTo(defender.getPlayerId()) <= 0;
+        TacticalState attackerTactical = null;
+
+        for (int t = 0; t < positions.size(); t++) {
+            CourtPosition ball = positions.get(t);
+            GameTickState attackerState = new GameTickState(
+                    ball, attackerPos, defenderPos, score, weather, t);
+            GameTickState defenderState = new GameTickState(
+                    ball, defenderPos, attackerPos, score, weather, t);
+            ObservableOpponentState attackerSeesOpp = new ObservableOpponentState(
+                    defenderPos, Vector3.getDefaultInstance(), ShotPreparation.NONE);
+            ObservableOpponentState defenderSeesOpp = new ObservableOpponentState(
+                    attackerPos, Vector3.getDefaultInstance(), ShotPreparation.NONE);
+
+            if (attackerFirst) {
+                attackerTactical = attackerBrain.tick(attackerState, attackerSeesOpp);
+                defenderBrain.tick(defenderState, defenderSeesOpp);
+            } else {
+                defenderBrain.tick(defenderState, defenderSeesOpp);
+                attackerTactical = attackerBrain.tick(attackerState, attackerSeesOpp);
+            }
+        }
+
+        return attackerTactical;
     }
 
     /**
@@ -319,35 +399,10 @@ public class PointSimulator {
         return CourtPosition.newBuilder().setX(targetX).setY(targetY).setZ(0).build();
     }
 
-    /**
-     * Picks FOREHAND or BACKHAND based on the player's absolute x position relative to
-     * the centre line and the direction they face (determined by which baseline they are on).
-     */
-    private ShotType pickShotType(TennisPlayerSnapshot player, CourtPosition playerPos) {
-        float relX = playerPos.getX(); // x relative to centre line (0)
-        boolean facingPlusY = playerPos.getY() < 0; // player on -y side faces toward +y net
-        boolean rightHanded = player.getDominantHand() != PlayerHand.PLAYER_HAND_LEFT;
-        // Right-handed facing +y: forehand side is +x; facing -y: forehand side is -x
-        float forehandXSign = facingPlusY
-                ? (rightHanded ? 1.0f : -1.0f)
-                : (rightHanded ? -1.0f : 1.0f);
-        return (relX * forehandXSign >= 0)
-                ? ShotType.SHOT_TYPE_FOREHAND
-                : ShotType.SHOT_TYPE_BACKHAND;
-    }
-
     private ShotEffect pickShotEffect(ShotIntent effectiveIntent) {
         return effectiveIntent == ShotIntent.SHOT_INTENT_DEFENSIVE
                 ? ShotEffect.SHOT_EFFECT_SLICE
                 : ShotEffect.SHOT_EFFECT_TOPSPIN;
-    }
-
-    private CourtPosition pickTarget(CourtPosition defenderPos) {
-        float sideSign = defenderPos.getY() >= 0 ? 1.0f : -1.0f;
-        float targetY = sideSign * (7.0f + random.nextFloat() * 3.0f); // 7–10 m from net
-        float targetX = (float) (random.nextGaussian() * 1.5f);
-        targetX = Math.clamp(targetX, -(COURT_HALF_WIDTH - 0.5f), COURT_HALF_WIDTH - 0.5f);
-        return CourtPosition.newBuilder().setX(targetX).setY(targetY).setZ(0).build();
     }
 
     private PointEnd pointEnd(

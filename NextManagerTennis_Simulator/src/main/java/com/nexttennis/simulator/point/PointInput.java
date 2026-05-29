@@ -1,5 +1,6 @@
 package com.nexttennis.simulator.point;
 
+import com.nexttennis.simulator.brain.PlayerBrain;
 import com.nexttennis.simulator.hit.PointContext;
 import com.nexttennis.simulator.proto.CourtPosition;
 import com.nexttennis.simulator.proto.PointStart;
@@ -24,5 +25,7 @@ public record PointInput(
         float receiverFatigue,
         WindVector ventMoyen,
         float surfaceDryingRate,
-        boolean precipitationActive
+        boolean precipitationActive,
+        PlayerBrain serverBrain,
+        PlayerBrain receiverBrain
 ) {}
