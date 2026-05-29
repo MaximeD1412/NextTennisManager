@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Next Tennis Manager - Replay 3D</title>
+  </head>
+  <body>
+    <main id="app">
+      <canvas id="replay-canvas" aria-label="Replay 3D d'une trajectoire de balle"></canvas>
+
+      <section class="hud hud-top" aria-label="Etat du replay">
+        <div>
+          <p class="eyebrow">Prototype Three.js</p>
+          <h1>Replay 3D</h1>
+          <p id="shot-name" class="shot-name">Chargement du coup</p>
+        </div>
+        <dl class="metrics">
+          <div>
+            <dt>Temps</dt>
+            <dd id="metric-time">0 ms</dd>
+          </div>
+          <div>
+            <dt>Vitesse</dt>
+            <dd id="metric-speed">1.0x</dd>
+          </div>
+          <div>
+            <dt>Moteur</dt>
+            <dd id="metric-source">Rust WASM</dd>
+          </div>
+          <div>
+            <dt>Position</dt>
+            <dd id="metric-position">x 0.00 / y 0.00 / z 0.00</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="hud hud-controls" aria-label="Controles du replay">
+        <div class="button-row">
+          <button id="play-toggle" type="button">Pause</button>
+          <button id="reset-button" type="button">Rejouer</button>
+        </div>
+        <label class="slider-label" for="speed-slider">
+          Vitesse
+          <input id="speed-slider" type="range" min="0.25" max="2.5" value="1" step="0.25" />
+        </label>
+        <label class="slider-label timeline" for="timeline-slider">
+          Trajectoire
+          <input id="timeline-slider" type="range" min="0" max="1" value="0" step="1" />
+        </label>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
